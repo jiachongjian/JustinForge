@@ -1,3 +1,7 @@
+# WoW SavedVariables
+*_SavedVariables.lua
+*_SavedVariables.lua.bak
+
 # Compiled Lua sources
 luac.out
 
@@ -38,4 +42,12 @@ luac.out
 *.i*86
 *.x86_64
 *.hex
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
 
