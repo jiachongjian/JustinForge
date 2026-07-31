@@ -1,31 +1,64 @@
--- JustinForge Core: Initialization
--- Creates the addon namespace, default config, and handles ADDON_LOADED
+-- ============================================================
+-- JustinForge Core: 初始化模块 (Init.lua)
+-- ============================================================
+-- 职责：
+--   1. 创建插件命名空间 ns（贯穿所有文件的共享表，避免污染全局环境）
+--   2. 定义默认配置表（用户首次使用或配置缺失时填充默认值）
+--   3. 监听 ADDON_LOADED 事件，在插件加载完成时：
+--      a) 读取持久化的 SavedVariables (JustinForgeDB)
+--      b) 将默认值合并到用户配置中（仅填充缺失键，不覆盖用户已有设置）
+--      c) 根据保存的开关状态启用所有已注册模块
+--      d) 初始化原生设置面板
+-- ============================================================
 
+-- addonName = "JustinForge"，ns = 贯穿所有文件的命名空间表
+-- Lua 的 ... 机制：TOC 中每个文件加载时， Blizzard 会传入 (addonName, nsTable)
 local addonName, ns = ...
 
+-- 插件版本号，可用于后续更新检测或日志展示
 ns.version = "1.0.0"
+-- 调试模式开关：true 时 ns.Util:Debug 会输出日志，生产环境设为 false
 ns.debug = false
 
--- Default configuration
+-- ============================================================
+-- 默认配置表
+-- ============================================================
+-- 结构与 SavedVariables (JustinForgeDB) 一致
+-- 每个模块对应 profile 下的一个键，键名与模块的 key 字段一致
+-- enabled = true 表示该模块默认启用
+-- 新增模块时在此处添加一行默认配置，键名需与 Module:Register 中的 key 完全一致
 local defaults = {
     profile = {
-        guildCloak     = { enabled = true },
-        mapCenter      = { enabled = true },
-        merchantExpand = { enabled = true },
+        guildCloak     = { enabled = true },  -- 功能1：公会披风自动还原
+        mapCenter      = { enabled = true },  -- 功能2：地图窗口居中
+        merchantExpand = { enabled = true },  -- 功能3：商人窗口扩展
     },
 }
 
--- Recursively merge default values into DB (only fills missing keys)
+-- ============================================================
+-- 递归合并默认值到用户配置表
+-- ============================================================
+-- 作用：仅填充用户配置中缺失的键，不覆盖用户已设置的值
+-- 例如用户曾禁用某模块，重新登录时不会因默认值而被重置为启用
+-- 参数：
+--   db       用户当前的 SavedVariables 表（会被原地修改）
+--   defaults 默认配置表
+-- 逻辑：
+--   - 若 defaults[k] 是表，则递归进入子表（确保嵌套结构存在）
+--   - 若 defaults[k] 是标量，仅当 db[k] == nil 时才赋值
 local function mergeDefaults(db, defaults)
     for k, v in pairs(defaults) do
         if type(v) == "table" then
+            -- 子表不存在则创建空表
             if db[k] == nil then
                 db[k] = {}
             end
+            -- 仅当子表也是 table 时递归（防止用户数据类型异常）
             if type(db[k]) == "table" then
                 mergeDefaults(db[k], v)
             end
         else
+            -- 标量值：仅当缺失时填充默认值
             if db[k] == nil then
                 db[k] = v
             end
@@ -33,30 +66,46 @@ local function mergeDefaults(db, defaults)
     end
 end
 
--- Event frame for ADDON_LOADED
+-- ============================================================
+-- ADDON_LOADED 事件处理
+-- ============================================================
+-- 创建一个隐藏的 Frame 用于接收事件（Frame 是 WoW 中接收事件的唯一载体）
+-- ADDON_LOADED 在插件及其 SavedVariables 全部加载完成后触发
+-- 参数 loadedAddon 为刚加载的插件名，需过滤只处理本插件
 local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:SetScript("OnEvent", function(self, event, loadedAddon)
+    -- 只处理本插件的加载事件（其他插件加载时也会触发此事件）
     if loadedAddon ~= addonName then return end
+
+    -- 本插件已加载完成，取消事件监听以避免重复处理（一次性事件）
     self:UnregisterEvent("ADDON_LOADED")
 
-    -- Load SavedVariables
+    -- ---- 步骤1：加载 SavedVariables ----
+    -- JustinForgeDB 是全局变量，由客户端在 ADDON_LOADED 前从磁盘读取并注入
+    -- 首次使用时该变量不存在，需初始化为空表
     if not JustinForgeDB then
         JustinForgeDB = {}
     end
     if not JustinForgeDB.profile then
         JustinForgeDB.profile = {}
     end
+    -- 合并默认值：确保所有模块的配置键都存在
     mergeDefaults(JustinForgeDB, defaults)
 
+    -- 将全局 DB 引用挂载到命名空间，供其他模块读写
     ns.db = JustinForgeDB
 
-    -- Enable all modules based on saved state
+    -- ---- 步骤2：根据保存的开关状态启用模块 ----
+    -- 此时 Module.lua 已加载（TOC 顺序在 Init 之后），注册表框架就绪
+    -- EnableAll 会遍历所有已注册模块，按 DB 中的 enabled 字段决定是否调用 OnEnable
     if ns.Module then
         ns.Module:EnableAll()
     end
 
-    -- Initialize settings panel
+    -- ---- 步骤3：初始化设置面板 ----
+    -- Config.lua 最后加载，此时所有模块已注册完毕
+    -- Init 会遍历模块注册表，为每个模块生成一个原生 Checkbox
     if ns.Config then
         ns.Config:Init()
     end

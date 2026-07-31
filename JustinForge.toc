@@ -6,6 +6,18 @@
 ## SavedVariables: JustinForgeDB
 ## X-WoW-Version: 12.0.7 (兼容 12.1)
 
+# TOC 文件说明：
+# - Interface: 120007 对应魔兽世界正式服 12.0.7 版本（格式：主版本*10000 + 次版本*100 + 补丁号）
+#   12.1.0 上线后需改为 120100；过渡期可勾选「加载过期插件」继续使用
+# - SavedVariables: JustinForgeDB 声明持久化变量，退出游戏时由客户端自动保存到 WTF/Account/.../SavedVariables/JustinForge.lua
+# - 加载顺序说明（Core -> Locales -> Module -> Modules -> Config）：
+#   1. Init.lua    先创建命名空间 ns 和默认配置，但此时 SavedVariables 尚未加载（ADDON_LOADED 时才加载）
+#   2. Util.lua   提供共享工具函数，供后续模块调用
+#   3. zhCN.lua   加载本地化字符串表 ns.L，模块注册时需要引用名称/描述
+#   4. Module.lua  建立模块注册表框架，提供 Register/Enable/Disable 接口
+#   5. Modules/*  各功能模块调用 ns.Module:Register 完成注册（仅注册，不启用）
+#   6. Config.lua 最后加载，此时所有模块已注册完毕，可遍历生成设置面板
+
 # Load order: Core -> Locales -> Module -> Modules -> Config
 Core\Init.lua
 Core\Util.lua

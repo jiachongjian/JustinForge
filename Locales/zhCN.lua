@@ -1,22 +1,36 @@
--- JustinForge Locale: Simplified Chinese (zhCN)
+-- ============================================================
+-- JustinForge Locale: 简体中文本地化 (zhCN.lua)
+-- ============================================================
+-- 职责：定义所有用户可见字符串的中文翻译，挂载到 ns.L 表
+-- 模块注册时通过 ns.L["key"] 引用名称和描述
+-- 新增模块时在此处添加对应的 _Name 和 _Desc 字符串
+-- 当前仅支持简体中文（zhCN），如需扩展可新增 enUS.lua / zhTW.lua
+-- ============================================================
 
 local addonName, ns = ...
 
+-- 初始化本地化表（若已被前序文件创建则复用，避免覆盖）
 ns.L = ns.L or {}
 
 local L = ns.L
 
+-- 插件整体标题和描述（用于设置面板分类名称）
 L["AddonTitle"] = "JustinForge 功能合集"
 L["AddonDesc"] = "一系列独立的实用功能，可单独启用或禁用。"
 
--- Module: GuildCloak
+-- ---- 模块字符串 ----
+-- 每个模块需要两个字符串：
+--   _Name  模块名称（显示在设置面板的 Checkbox 标签）
+--   _Desc  模块描述（显示在 Checkbox 下方，说明功能作用）
+
+-- 模块1：公会披风自动还原
 L["GuildCloak_Name"] = "公会披风自动还原"
 L["GuildCloak_Desc"] = "使用公会阵营披风后，自动将背槽装备换回使用前的物品。"
 
--- Module: MapCenter
+-- 模块2：地图窗口居中
 L["MapCenter_Name"] = "地图窗口居中"
 L["MapCenter_Desc"] = "每次打开地图窗口时，自动将窗口定位到屏幕居中展示。"
 
--- Module: MerchantExpand
+-- 模块3：商人窗口扩展
 L["MerchantExpand_Name"] = "商人窗口扩展"
 L["MerchantExpand_Desc"] = "将商人窗口每页物品数从 10 扩展为 20，沿用原版布局方向翻倍排列。"
