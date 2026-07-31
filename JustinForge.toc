@@ -1,0 +1,17 @@
+## Interface: 120007
+## Title: JustinForge
+## Notes: 实用功能合集
+## Author: JustinChia
+## Version: 1.0.0
+## SavedVariables: JustinForgeDB
+## X-WoW-Version: 12.0.7 (兼容 12.1)
+
+# Load order: Core -> Locales -> Module -> Modules -> Config
+Core\Init.lua
+Core\Util.lua
+Locales\zhCN.lua
+Core\Module.lua
+Modules\GuildCloak.lua
+Modules\MapCenter.lua
+Modules\MerchantExpand.lua
+Core\Config.lua
