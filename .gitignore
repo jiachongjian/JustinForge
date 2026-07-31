@@ -46,6 +46,7 @@ luac.out
 # IDE
 .vscode/
 .idea/
+.codebuddy/
 
 # OS
 .DS_Store
