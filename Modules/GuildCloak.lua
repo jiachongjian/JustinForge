@@ -9,11 +9,16 @@
 --   1. 平时用 PLAYER_EQUIPMENT_CHANGED 追踪注册的槽位，
 --      把非传送装备记录为「还原目标」，并持久化到
 --      SavedVariables（按角色分键），/reload 或重登后不丢失
---   2. 传送落地时（PLAYER_ENTERING_WORLD）扫描这些槽位，
---      若身上仍穿着传送装备，则换回还原目标
---   3. 落地瞬间若处于战斗锁定（战斗中 EquipItemByName 会失败），
+--   2. 两条触发路径覆盖全部传送场景：
+--      a. PLAYER_ENTERING_WORLD：跨地图传送（有读条画面）落地后触发
+--      b. BAG_UPDATE_COOLDOWN：同地图传送无读条画面，不触发
+--         PLAYER_ENTERING_WORLD，改为通过披风冷却「刚开始」判定使用
+--         （穿上装备触发的冷却仅 30 秒，使用冷却为 2/4/8 小时，可区分）
+--   3. 换回执行带重试：落地瞬间背包数据可能尚未复制到客户端
+--      （GetItemCount 短暂返回 0），间隔重试数次，仅最终失败才提示
+--   4. 若处于战斗锁定（战斗中 EquipItemByName 会失败），
 --      等待 PLAYER_REGEN_ENABLED 脱战后再补执行
---   4. 换回成功 / 无还原目标时在聊天框给出提示
+--   5. 换回成功 / 无还原目标时在聊天框给出提示
 --
 -- 为何不在装备瞬间换回：
 --   公会披风需先装备再手动使用才能触发传送，若一穿上就换回，
@@ -65,11 +70,22 @@ local module = ns.Module:Register({
     defaultEnabled = true,
 })
 
--- 事件 Frame：接收装备变更 / 进入世界 / 脱战事件
+-- 事件 Frame：接收装备变更 / 进入世界 / 脱战 / 冷却更新事件
 -- 模块禁用时解绑事件，实现零开销
 local eventFrame
 -- 落地时处于战斗锁定的等待标志（脱战后补执行换回）
 local waitingCombatLockdown = false
+-- 换回调度令牌：每次新调度使其递增，旧计时器回调比对后自动失效，
+-- 避免「使用检测」与「落地检测」两条路径并发产生重复提示
+local checkToken = 0
+-- 当前调度链已尝试次数
+local restoreAttempts = 0
+local MAX_RESTORE_ATTEMPTS = 4    -- 首次尝试 + 3 次重试
+local RESTORE_RETRY_DELAY = 1     -- 重试间隔（秒）
+local USE_DETECT_DELAY = 1.5      -- 检测到披风使用后延迟换回（等待传送完成）
+-- 「使用」冷却判定阈值：装备披风触发的冷却仅 30 秒，
+-- 使用冷却为 2/4/8 小时，超过该阈值即视为真正使用了传送
+local USE_COOLDOWN_THRESHOLD = 60
 
 -- ------------------------------------------------------------
 -- GetRestoreStore: 获取当前角色的「还原目标」持久化存储表
@@ -106,12 +122,16 @@ local function IsTeleportEquipment(slot)
 end
 
 -- ------------------------------------------------------------
--- CheckTeleportEquipment: 扫描并换回传送装备
+-- TryRestoreTeleportEquipment: 扫描并换回传送装备
 -- ------------------------------------------------------------
--- 在传送落地（PLAYER_ENTERING_WORLD）或脱战
--- （PLAYER_REGEN_ENABLED）后调用
-local function CheckTeleportEquipment()
+-- 返回 true 表示「仍穿着披风但暂时无法换回，需要稍后重试」。
+-- 传送落地瞬间背包数据可能尚未复制到客户端，GetItemCount 会
+-- 短暂返回 0，此时静默等待重试而非误报「原装备不在背包」；
+-- 只有最后一次尝试仍失败时才给出对应提示。
+local function TryRestoreTeleportEquipment()
     local store = GetRestoreStore()
+    local needsRetry = false
+    local isFinalAttempt = restoreAttempts >= MAX_RESTORE_ATTEMPTS
     for slot in pairs(TELEPORT_EQUIPMENT_SLOTS) do
         if IsTeleportEquipment(slot) then
             local currentLink = GetInventoryItemLink("player", slot)
@@ -121,12 +141,72 @@ local function CheckTeleportEquipment()
                 -- 换回触发的装备事件会把还原目标更新为同一件装备，幂等无循环
                 EquipItemByName(previousLink, slot)
                 Util:Print(L["GuildCloak_Restored"]:format(previousLink))
+            elseif previousLink and not isFinalAttempt then
+                -- 有还原记录但背包数据未就绪，稍后重试，暂不提示
+                needsRetry = true
             elseif previousLink then
                 -- 有还原记录但原装备已不在背包（被出售/摧毁/存入银行），无法换回
                 Util:Print(L["GuildCloak_ItemMissing"]:format(currentLink or "?", previousLink))
             else
                 -- 没有还原目标（该角色从未记录过其他背部装备），仅提示不动作
                 Util:Print(L["GuildCloak_NoPrevious"]:format(currentLink or "?"))
+            end
+        end
+    end
+    return needsRetry
+end
+
+-- ------------------------------------------------------------
+-- RunRestoreCheck / ScheduleRestoreCheck: 换回执行与调度
+-- ------------------------------------------------------------
+-- 每次调度生成新令牌，旧计时器回调比对令牌失败即退出，
+-- 保证同一时刻只有一条调度链生效（落地检测与使用检测可能
+-- 相继触发，后者取代前者）。
+local function RunRestoreCheck(token)
+    if token ~= checkToken then return end
+    if InCombatLockdown() then
+        -- 战斗中无法换装，标记后等待脱战
+        waitingCombatLockdown = true
+        return
+    end
+    restoreAttempts = restoreAttempts + 1
+    if TryRestoreTeleportEquipment() and restoreAttempts < MAX_RESTORE_ATTEMPTS then
+        C_Timer.After(RESTORE_RETRY_DELAY, function()
+            RunRestoreCheck(token)
+        end)
+    end
+end
+
+local function ScheduleRestoreCheck(delay)
+    checkToken = checkToken + 1
+    restoreAttempts = 0
+    local token = checkToken
+    if delay and delay > 0 then
+        C_Timer.After(delay, function()
+            RunRestoreCheck(token)
+        end)
+    else
+        RunRestoreCheck(token)
+    end
+end
+
+-- ------------------------------------------------------------
+-- CheckCloakUsed: 检测披风是否「刚被使用」
+-- ------------------------------------------------------------
+-- 同地图传送没有读条画面，PLAYER_ENTERING_WORLD 不会触发。
+-- 使用披风后其冷却变为 2/4/8 小时，而单纯穿上装备触发的
+-- 冷却仅 30 秒，据此可区分；再通过「剩余时长接近总时长」
+-- 确认冷却刚开始，排除穿着冷却中的披风时其他物品冷却更新
+-- 引发的同一事件。
+local function CheckCloakUsed()
+    for slot in pairs(TELEPORT_EQUIPMENT_SLOTS) do
+        if IsTeleportEquipment(slot) then
+            local start, duration = GetInventoryItemCooldown("player", slot)
+            if start and duration and duration > USE_COOLDOWN_THRESHOLD then
+                local remaining = start + duration - GetTime()
+                if remaining > duration - 3 then
+                    ScheduleRestoreCheck(USE_DETECT_DELAY)
+                end
             end
         end
     end
@@ -151,18 +231,16 @@ local function OnEvent(_, event, arg1, arg2)
             end
         end
     elseif event == "PLAYER_ENTERING_WORLD" then
-        -- 传送/登录/reload 落地后检测
-        if InCombatLockdown() then
-            -- 战斗中无法换装，标记后等待脱战
-            waitingCombatLockdown = true
-        else
-            CheckTeleportEquipment()
-        end
+        -- 传送/登录/reload 落地后检测（重试链覆盖背包数据未就绪的窗口）
+        ScheduleRestoreCheck(0)
+    elseif event == "BAG_UPDATE_COOLDOWN" then
+        -- 同地图传送无读条画面，通过披风冷却刚开始判定「刚使用」
+        CheckCloakUsed()
     elseif event == "PLAYER_REGEN_ENABLED" then
         -- 脱战后补执行因战斗锁定而推迟的换回
         if waitingCombatLockdown then
             waitingCombatLockdown = false
-            CheckTeleportEquipment()
+            ScheduleRestoreCheck(0)
         end
     end
 end
@@ -183,6 +261,7 @@ function module:OnEnable()
     eventFrame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
     eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
     eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+    eventFrame:RegisterEvent("BAG_UPDATE_COOLDOWN")
 
     local store = GetRestoreStore()
     if store then
@@ -198,11 +277,12 @@ end
 -- OnDisable: 模块禁用
 -- ------------------------------------------------------------
 -- 1. 解绑所有事件（实现零开销，禁用后不再消耗任何运行时资源）
--- 2. 清理运行时状态标志
+-- 2. 递增调度令牌使未执行的计时器回调失效，清理运行时状态标志
 -- 注意：不要清空 DB 中的还原目标，持久化记录需跨会话保留
 function module:OnDisable()
     if eventFrame then
         eventFrame:UnregisterAllEvents()
     end
+    checkToken = checkToken + 1
     waitingCombatLockdown = false
 end

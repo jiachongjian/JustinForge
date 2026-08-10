@@ -1,25 +1,27 @@
 -- ============================================================
--- JustinForge 模块14: Shift+左键快速焦点 (QuickFocus.lua)
+-- JustinForge 模块14: Shift+右键快速焦点 (QuickFocus.lua)
 -- ============================================================
 -- 功能描述：
---   按住 Shift 并用左键点击单位，将其设为焦点。适用于：
+--   按住 Shift 并用右键点击单位，将其设为焦点。适用于：
 --     1. 场景中的单位（通过覆盖按键绑定触发 /focus mouseover）
---     2. 默认头像/小队/团队等单位框体（通过设置框体的
---        shift-type1 = "focus" 安全属性实现）
+--     2. 暴雪默认头像/小队/团队等单位框体（通过设置框体的
+--        shift-type2 = "focus" 安全属性实现）
+--     3. EllesmereUI 单位框体（oUF 安全按钮，同样支持 shift-type2）
 --   （实现逻辑移植自 ElvUI_WindTools 的 UnitFrames/QuickFocus，
---     原实现针对 ElvUI 框体，本模块改为支持暴雪默认框体，无 ElvUI 依赖）
+--     原实现针对 ElvUI 框体，本模块支持暴雪默认框体与 EllesmereUI 框体）
 --
 -- 实现原理：
 --   1. 创建隐藏安全按钮（SecureActionButtonTemplate），宏内容为
 --      /focus mouseover，再用 SetOverrideBindingClick 将
---      SHIFT-BUTTON1 映射到该按钮 —— 覆盖未被框体拦截的场景点击
---   2. 单位框体本身会拦截鼠标点击，需为其设置 shift-type1="focus"
---      安全属性（暴雪安全按钮模板原生支持 focus 动作类型）
+--      SHIFT-BUTTON2 映射到该按钮 —— 覆盖未被框体拦截的场景点击
+--   2. 单位框体本身会拦截鼠标点击，需为其设置 shift-type2="focus"
+--      安全属性（暴雪安全按钮模板原生支持 focus 动作类型；
+--      按住 Shift 时优先于框体自身的右键菜单）
 --   3. 战斗中无法修改绑定/属性，延迟到 PLAYER_REGEN_ENABLED 处理
 --   4. 禁用时清除覆盖绑定并还原框体原属性值
 --
 -- 注意：姓名板（NamePlate）属于受保护安全框体，不支持此功能
--- （Shift+左键点姓名板只会选中目标，与 WindTools 行为一致）
+-- （Shift+右键点姓名板只会选中目标，与 WindTools 行为一致）
 -- ============================================================
 
 local addonName, ns = ...
@@ -47,7 +49,7 @@ local module = ns.Module:Register({
 })
 
 local BUTTON_NAME = "JustinForgeQuickFocusButton"
-local BINDING_KEY = "SHIFT-BUTTON1"
+local BINDING_KEY = "SHIFT-BUTTON2"
 
 local focusButton               -- 隐藏安全按钮（懒创建）
 local bindingApplied = false    -- 覆盖绑定是否已应用
@@ -72,10 +74,36 @@ local NAMED_FRAMES = {
     "Boss3TargetFrame",
     "Boss4TargetFrame",
     "Boss5TargetFrame",
+    -- EllesmereUI 单位框体（oUF 具名安全按钮）
+    "EllesmereUIUnitFrames_Player",
+    "EllesmereUIUnitFrames_Target",
+    "EllesmereUIUnitFrames_Focus",
+    "EllesmereUIUnitFrames_Pet",
+    "EllesmereUIUnitFrames_TargetTarget",
+    "EllesmereUIUnitFrames_FocusTarget",
+    "EllesmereUIUnitFrames_Boss1",
+    "EllesmereUIUnitFrames_Boss2",
+    "EllesmereUIUnitFrames_Boss3",
+    "EllesmereUIUnitFrames_Boss4",
+    "EllesmereUIUnitFrames_Boss5",
+}
+
+-- EllesmereUI 团队/小队安全组标头（子按钮按需动态创建，遍历其子框架）
+local ELLESMERE_HEADERS = {
+    "ERFPartyHeader",
+    "ERFFlatHeader",
+    "ERFGroupHeader1",
+    "ERFGroupHeader2",
+    "ERFGroupHeader3",
+    "ERFGroupHeader4",
+    "ERFGroupHeader5",
+    "ERFGroupHeader6",
+    "ERFGroupHeader7",
+    "ERFGroupHeader8",
 }
 
 -- ------------------------------------------------------------
--- SetupFrame: 为单个单位框体设置 shift+左键 = 焦点
+-- SetupFrame: 为单个单位框体设置 shift+右键 = 焦点
 -- ------------------------------------------------------------
 local function SetupFrame(frame)
     if not frame or hookedFrames[frame] ~= nil then
@@ -86,10 +114,10 @@ local function SetupFrame(frame)
         return
     end
     -- 记录原属性值以便禁用时还原（false 标记原本无值）
-    local ok, old = pcall(frame.GetAttribute, frame, "shift-type1")
+    local ok, old = pcall(frame.GetAttribute, frame, "shift-type2")
     if not ok then return end
     hookedFrames[frame] = old or false
-    pcall(frame.SetAttribute, frame, "shift-type1", "focus")
+    pcall(frame.SetAttribute, frame, "shift-type2", "focus")
 end
 
 -- ------------------------------------------------------------
@@ -130,6 +158,20 @@ local function ScanUnitFrames()
             end
         end
     end
+
+    -- EllesmereUI 团队/小队框体：遍历安全组标头的动态子按钮
+    for _, headerName in ipairs(ELLESMERE_HEADERS) do
+        local header = _G[headerName]
+        if header and header.GetChildren then
+            for _, child in ipairs({ header:GetChildren() }) do
+                -- 仅处理带 unit 属性的安全按钮（排除标头附带的其他子框架）
+                local ok, unit = pcall(child.GetAttribute, child, "unit")
+                if ok and unit then
+                    SetupFrame(child)
+                end
+            end
+        end
+    end
 end
 
 -- ------------------------------------------------------------
@@ -140,7 +182,7 @@ local function RestoreFrames()
         return false
     end
     for frame, old in pairs(hookedFrames) do
-        pcall(frame.SetAttribute, frame, "shift-type1", old ~= false and old or nil)
+        pcall(frame.SetAttribute, frame, "shift-type2", old ~= false and old or nil)
     end
     wipe(hookedFrames)
     wipe(pendingFrames)
@@ -225,7 +267,7 @@ function module:OnEnable()
     eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
     eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
     SetupAll()
-    Util:Debug("QuickFocus: 已启用 Shift+左键快速焦点")
+    Util:Debug("QuickFocus: 已启用 Shift+右键快速焦点")
 end
 
 -- ------------------------------------------------------------

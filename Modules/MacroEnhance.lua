@@ -2,8 +2,8 @@
 -- JustinForge 模块7: 宏界面增强 (MacroEnhance.lua)
 -- ============================================================
 -- 功能描述：
---   1. 加宽加高宏界面（338×424 → 500×560），宏列表固定每行 10 个，
---      宏编辑输入框同步扩大，长宏不再频繁换行
+--   1. 加高宏界面（338×424 → 338×580），宏列表每页 6 列 × 5 行
+--      共 30 个（宽度不变），宏编辑输入框同步加高，长宏不再频繁换行
 --   2. 图标选择弹窗（改名/换图标）新增搜索框，支持按法术名称、
 --      图标文件名、图标 fileID 数字模糊过滤
 --   （实现逻辑提取自 ExwindTools 的 ExTools.MacroExtension，去除其
@@ -43,10 +43,12 @@ local module = ns.Module:Register({
 })
 
 -- 原始尺寸（暴雪默认）与增强尺寸
+-- 增强只加高不加宽：高度 +156 中约 65% 分配给宏列表（保证完整显示 5 行），
+-- 其余分配给宏编辑输入框
 local BASE_WIDTH = 338
 local BASE_HEIGHT = 424
-local TARGET_WIDTH = 500
-local TARGET_HEIGHT = 560
+local TARGET_WIDTH = 338
+local TARGET_HEIGHT = 580
 
 -- active: 模块功能是否生效（所有 hook 以此守护，禁用后零副作用）
 local active = false
@@ -192,9 +194,9 @@ local function ApplyMacroFrameLayout()
         local selector = MacroFrame.MacroSelector
         local stride, horizontalSpacing
         if active then
-            -- 启用增强时优先固定一行 10 个，宽度不足时自动降级
+            -- 启用增强时固定每行 6 个（与每页 6×5=30 个对应），宽度不足时自动降级
             local usableWidth = selectorWidth - 32
-            local targetStride = 10
+            local targetStride = 6
             local buttonSize = 36
             local minSpacing = 2
             local maxSpacing = 20
@@ -203,7 +205,7 @@ local function ApplyMacroFrameLayout()
 
             if horizontalSpacing < minSpacing then
                 horizontalSpacing = minSpacing
-                stride = Clamp(math.floor((usableWidth + horizontalSpacing) / (buttonSize + horizontalSpacing)), 6,
+                stride = Clamp(math.floor((usableWidth + horizontalSpacing) / (buttonSize + horizontalSpacing)), 4,
                     targetStride)
             elseif horizontalSpacing > maxSpacing then
                 horizontalSpacing = maxSpacing

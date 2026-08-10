@@ -15,7 +15,7 @@ ns.L = ns.L or {}
 local L = ns.L
 
 -- 插件整体标题和描述（用于设置面板分类名称）
-L["AddonTitle"] = "JustinForge 功能合集"
+L["AddonTitle"] = "AddonJustin"
 L["AddonDesc"] = "一系列独立的实用功能，可单独启用或禁用。"
 
 -- ---- 异常提示字符串 ----
@@ -52,12 +52,15 @@ L["MerchantExpand_ColumnsTip"] = "商人窗口每行显示的物品列数（2-5�
 
 -- 模块4：嗜血音乐循环
 L["LustMusic_Name"] = "嗜血音乐循环"
-L["LustMusic_Desc"] = "自身获得嗜血/英勇/时间扭曲等增益期间，循环播放 Interface\\lust.ogg，增益消失后自动停止。队友开嗜血但你未获得增益时会聊天提示。需自行将 lust.ogg 放入游戏 Interface 目录并重启游戏。"
+L["LustMusic_Desc"] = "自身获得嗜血/英勇/时间扭曲等增益期间，循环播放 lust.ogg，增益消失后自动停止。队友开嗜血但你未获得增益时会聊天提示。需自行将 lust.ogg 放入插件目录（Interface\\AddOns\\JustinForge\\lust.ogg）或游戏 Interface 目录根部，并完全重启游戏。"
 L["LustMusic_MissedLust"] = "检测到队友开启了嗜血/英勇，但你未获得增益效果。"
-L["LustMusic_Test"] = "测试音乐播放"
-L["LustMusic_TestTip"] = "点击播放一次 lust.ogg，用于验证音频文件是否正确安装。"
+L["LustMusic_Play"] = "测试音乐"
+L["LustMusic_PlayTip"] = "循环播放 lust.ogg，用于验证音频文件是否正确安装；再次点击「暂停」停止。"
+L["LustMusic_Stop"] = "停止测试音乐"
+L["LustMusic_StopTip"] = "停止测试播放的 lust.ogg。"
 L["LustMusic_TestSuccess"] = "测试播放成功，音频文件正常。"
-L["LustMusic_TestFailed"] = "测试播放失败！请确认 lust.ogg 已放入游戏 Interface 目录根部，并完全重启游戏。"
+L["LustMusic_TestFailed"] = "测试播放失败！请确认 lust.ogg 已放入插件目录（Interface\\AddOns\\JustinForge\\lust.ogg）或游戏 Interface 目录根部，并完全重启游戏（/reload 无效）。"
+L["LustMusic_FileMissing"] = "未找到音频文件 lust.ogg，无法播放音乐。请将其放入插件目录（Interface\\AddOns\\JustinForge\\lust.ogg）或游戏 Interface 目录根部，并完全重启游戏（/reload 无效）。"
 
 -- 模块5：德鲁伊自动取消旅行形态
 L["DruidFlightForm_Name"] = "德鲁伊自动取消旅行形态"
@@ -69,21 +72,25 @@ L["ChatHideLearn_Desc"] = "在聊天窗口中隐藏系统消息，如「你学�
 
 -- 模块7：宏界面增强
 L["MacroEnhance_Name"] = "宏界面增强"
-L["MacroEnhance_Desc"] = "加宽加高宏界面（每行 10 个宏、编辑框更大），并在图标选择弹窗中增加搜索框，支持按法术名称、图标文件名或图标 ID 过滤。"
+L["MacroEnhance_Desc"] = "加高宏界面（每页 6 列 × 5 行共 30 个宏、编辑框更高，宽度不变），并在图标选择弹窗中增加搜索框，支持按法术名称、图标文件名或图标 ID 过滤。"
 L["MacroEnhance_SearchHint"] = "搜索法术/图标ID"
 
 -- 模块8：聊天频道快捷栏
 L["ChatChannelBar_Name"] = "聊天频道快捷栏"
-L["ChatChannelBar_Desc"] = "在屏幕上显示一排频道按钮（世/说/喊/队/会/副/团/骰/确/倒），点击即切换到对应聊天频道或执行指令。通过下方坐标滑条调整位置（屏幕左下角为原点）。"
+L["ChatChannelBar_Desc"] = "在屏幕上显示一排频道按钮（说/喊/队/会/副/团/世/骰/确/倒），左键点击切换到对应聊天频道或执行指令；右键点击「世」可加入/退出大脚世界频道。通过下方坐标滑条调整位置（屏幕中心为原点）。"
 L["ChatChannelBar_PosX"] = "快捷栏水平位置 (X)"
 L["ChatChannelBar_PosY"] = "快捷栏垂直位置 (Y)"
-L["ChatChannelBar_NoChannel"] = "未找到频道: "
+L["ChatChannelBar_NoChannel"] = "未加入大脚世界频道，可右键点击「世」按钮加入: "
+L["ChatChannelBar_Joined"] = "已加入频道: 大脚世界频道"
+L["ChatChannelBar_Left"] = "已退出频道: 大脚世界频道"
 L["ChatChannelBar_CmdFailed"] = "指令执行失败: "
 L["ChatChannelBar_OpenFailed"] = "聊天框打开失败: "
 
 -- 模块9：人物属性面板
 L["CharacterStats_Name"] = "人物属性面板"
-L["CharacterStats_Desc"] = "在屏幕上常态显示人物属性面板，依次为：主属性、副属性（暴击/急速/精通/全能）、第三属性（吸血/闪避/加速，非0时显示）、坦克属性（护甲/躲闪/招架/格挡，非0时显示）、移动速度。左键拖动可移动位置。"
+L["CharacterStats_Desc"] = "在屏幕上常态显示人物属性面板（无边框背景），依次为：主属性、副属性（暴击/急速/精通/全能）、第三属性（吸血/闪避/加速，非0时显示）、坦克属性（躲闪/招架/格挡，仅坦克专精显示）、移速。通过下方坐标滑条调整位置（屏幕中心为原点）。"
+L["CharacterStats_PosX"] = "面板水平位置 (X)"
+L["CharacterStats_PosY"] = "面板垂直位置 (Y)"
 L["CS_Primary"] = "主属性"
 L["CS_Strength"] = "力量"
 L["CS_Agility"] = "敏捷"
@@ -95,11 +102,10 @@ L["CS_Versa"] = "全能"
 L["CS_Leech"] = "吸血"
 L["CS_Avoidance"] = "闪避"
 L["CS_Speed"] = "加速"
-L["CS_Armor"] = "护甲"
 L["CS_Dodge"] = "躲闪"
 L["CS_Parry"] = "招架"
 L["CS_Block"] = "格挡"
-L["CS_MoveSpeed"] = "移动速度"
+L["CS_MoveSpeed"] = "移速"
 
 -- 模块11：鼠标提示大秘境信息
 L["MythicPlusTooltip_Name"] = "鼠标提示大秘境信息"
@@ -112,18 +118,10 @@ L["MPT_Keystone"] = "钥石"
 L["HideCrafter_Name"] = "隐藏制造业制造者"
 L["HideCrafter_Desc"] = "在装备鼠标提示中隐藏制造业装备上的绿色「<制造者名字>」署名行。"
 
--- 模块13：Shift+左键快速焦点
-L["QuickFocus_Name"] = "Shift+左键快速焦点"
-L["QuickFocus_Desc"] = "按住 Shift 并用左键点击场景中的单位或默认头像/小队/团队框体，将其设为焦点。禁用后自动还原框体属性。不支持姓名板。"
-
--- 模块14：仇恨预警
-L["ThreatMonitor_Name"] = "仇恨预警"
-L["ThreatMonitor_Desc"] = "战斗中显示当前敌对目标对你的仇恨百分比预警：坦克专精在低于 100%（仇恨不稳/已丢失）时显示，治疗/输出专精在高于 80%（即将 OT）时显示。颜色随仇恨状态变化（白/黄/橙/红），越红越危险。面板可左键拖动位置。"
-L["ThreatMonitor_Label"] = "仇恨"
+-- 模块13：Shift+右键快速焦点
+L["QuickFocus_Name"] = "Shift+右键快速焦点"
+L["QuickFocus_Desc"] = "按住 Shift 并用右键点击场景中的单位、默认头像/小队/团队框体或 EllesmereUI 单位框体，将其设为焦点。禁用后自动还原框体属性。不支持姓名板。"
 
 -- 模块10：虫洞抽屉宏
 L["DrawerMacro_Name"] = "虫洞抽屉宏"
-L["DrawerMacro_Desc"] = "自动创建宏「JF虫洞」（首次启用时创建，需手动拖到动作条）。点击宏会在鼠标位置展开原生风格的抽屉窗口，网格展示全部虫洞传送玩具（诺森德至奎尔萨拉斯），点击即用并自动收起。未学会的玩具显示为灰色。禁用模块后宏将失效，可自行在宏界面删除。"
-L["DrawerMacro_Created"] = "已创建宏「%s」，输入 /macro 打开宏界面，将其拖到动作条即可使用。"
-L["DrawerMacro_NoSpace"] = "通用宏数量已达上限，无法创建宏「%s」，请清理后重载界面。"
-L["DrawerMacro_NameConflict"] = "已存在同名宏「%s」但并非本插件创建，为避免覆盖已跳过自动创建。"
+L["DrawerMacro_Desc"] = "手动创建一个宏，内容填入固定命令 /click JFDrawerBtn1（仅一行，不受宏数量与 255 字符限制影响），拖到动作条点击后会在鼠标位置展开原生风格的抽屉窗口，网格展示全部虫洞传送玩具（诺森德至奎尔萨拉斯，最多支持 30 个位置），点击即用并自动收起。未学会的玩具显示为灰色。禁用模块后宏将失效。"

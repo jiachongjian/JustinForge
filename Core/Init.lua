@@ -27,6 +27,9 @@ ns.debug = false
 -- 每个模块对应 profile 下的一个键，键名与模块的 key 字段一致
 -- enabled = true 表示该模块默认启用
 -- 新增模块时在此处添加一行默认配置，键名需与 Module:Register 中的 key 完全一致
+-- 坐标类设置项以屏幕中心为原点（0 居中，左/下为负，右/上为正）
+local screenWidth = math.floor(UIParent:GetWidth() or 1920)
+local screenHeight = math.floor(UIParent:GetHeight() or 1080)
 local defaults = {
     profile = {
         guildCloak      = { enabled = true },  -- 功能1：公会披风自动还原
@@ -37,18 +40,17 @@ local defaults = {
         druidFlightForm = { enabled = true },  -- 功能5：德鲁伊自动取消旅行形态
         chatHideLearn   = { enabled = true },  -- 功能6：隐藏学习/遗忘消息
         macroEnhance    = { enabled = true },  -- 功能7：宏界面增强
-        -- 功能8：聊天频道快捷栏（posX/posY 为快捷栏左下角相对屏幕左下角的像素坐标）
-        chatChannelBar  = { enabled = true, posX = 46, posY = 207 },
-        -- 功能9：人物属性面板（point/posX/posY 为面板拖动后保存的锚点位置）
-        characterStats  = { enabled = true },
-        -- 功能10：虫洞抽屉宏（自动创建宏「JF虫洞」，点击展开虫洞玩具抽屉）
+        -- 功能8：聊天频道快捷栏（posX/posY 为相对屏幕中心的偏移，默认左下角附近）
+        chatChannelBar  = { enabled = true,
+            posX = 46 - math.floor(screenWidth / 2), posY = 207 - math.floor(screenHeight / 2) },
+        -- 功能9：人物属性面板（posX/posY 为相对屏幕中心的偏移，默认屏幕左侧中部）
+        characterStats  = { enabled = true, posX = 20 - math.floor(screenWidth / 2), posY = 0 },
+        -- 功能10：虫洞抽屉（宏由玩家手动创建，内容为 /click JFDrawerBtn1）
         drawerMacro     = { enabled = true },
         -- 功能11：鼠标提示大秘境信息（评分/钥石/各副本最佳成绩）
         mythicPlusTooltip = { enabled = true },
         hideCrafter     = { enabled = true },  -- 功能12：隐藏制造业制造者
-        quickFocus      = { enabled = true },  -- 功能13：Shift+左键快速焦点
-        -- 功能14：仇恨预警（point/posX/posY 为面板拖动后保存的锚点位置）
-        threatMonitor   = { enabled = true },
+        quickFocus      = { enabled = true },  -- 功能13：Shift+右键快速焦点
     },
 }
 

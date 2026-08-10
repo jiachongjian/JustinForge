@@ -279,7 +279,10 @@ local function OnTooltipUnit(tooltip)
     if tooltip ~= GameTooltip then return end
 
     local _, unit = tooltip:GetUnit()
-    if not unit or not UnitIsPlayer(unit) then return end
+    -- 单位本身可能是 secret 值（信息受限场景，如 SetWorldCursor），
+    -- UnitIsPlayer 等 API 拒绝 secret 参数，直接跳过
+    if not unit or (issecretvalue and issecretvalue(unit)) then return end
+    if not UnitIsPlayer(unit) then return end
     -- 等级可能是 secret 值（信息受限场景），pcall 保护，异常时保守跳过
     local okLevel, isMaxLevel = pcall(function() return UnitLevel(unit) == MAX_PLAYER_LEVEL end)
     if not okLevel or not isMaxLevel then return end

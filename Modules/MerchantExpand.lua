@@ -17,7 +17,11 @@
 --      （必须先于暴雪首次刷新，详见 EnsureItemButtons 注释）
 --   4. Hook MerchantFrame_Update（统一刷新入口，覆盖切页/切Tab）
 --      与 MerchantFrame_UpdateRepairButtons，每次刷新重排布局
---   5. 底部处理：隐藏原生底部左边框，用 UI-Merchant-BotFrame
+--   5. 物品按列优先纵向填充（与原版一致：先填满一列再向右排），
+--      容量内按钮显隐完全交给暴雪刷新逻辑管理，绝不强制显示
+--      （空槽位被强制显示会遮挡底部修理按钮，并在回购页叠加
+--      残留的购买页内容）
+--   6. 底部处理：隐藏原生底部左边框，用 UI-Merchant-BotFrame
 --      图集纹理整段重铺；货币栏拉成单一全宽 inset 消除接缝
 --
 -- 关键细节（来自 ExwindTools 的实战经验）：
@@ -268,17 +272,16 @@ local function ApplyLayout()
     _G.MERCHANT_ITEMS_PER_PAGE = cols * MERCHANT_ROWS
     _G.BUYBACK_ITEMS_PER_PAGE = cols * BUYBACK_ROWS
 
-    -- 按钮已在 ApplyMerchantExpand 中提前补建（见 EnsureItemButtons），
-    -- 此处仅同步显隐：当前页容量内显示，超出的隐藏（复用不销毁）
+    -- 按钮已在 ApplyMerchantExpand 中提前补建（见 EnsureItemButtons）。
+    -- 此处只隐藏超出当前页容量的按钮（切 Tab / 减少列数后收编，
+    -- 复用不销毁）；容量内按钮的显隐必须完全交给暴雪刷新逻辑管理：
+    -- 无物品的槽位暴雪会隐藏，若强制显示，空槽会遮挡底部修理按钮，
+    -- 回购页还会叠加显示残留的购买页内容
     EnsureItemButtons()
-    for i = 1, MAX_ITEMS do
+    for i = itemsPerPage + 1, MAX_ITEMS do
         local item = _G["MerchantItem" .. i]
         if item then
-            if i <= itemsPerPage then
-                item:Show()
-            else
-                item:Hide()
-            end
+            item:Hide()
         end
     end
 
@@ -312,10 +315,11 @@ end
 -- ------------------------------------------------------------
 -- PositionItems: 按 列数×行数 网格重排物品按钮
 -- ------------------------------------------------------------
--- 布局规则：
+-- 布局规则（列优先纵向填充，与原版一致）：
 --   - 物品1锚定窗口左上角 (11, -69)
---   - (i-1)%cols==0 时换行，锚定到上一行同列物品下方
---   - 其余水平排列在左侧邻居右边
+--   - 每列从上往下依次排列，排满 rows 个后向右另起一列
+--   - (i-1)%rows==0 时开启新列，锚定到上一列顶部物品的右侧
+--   - 列内其余物品依次锚定到上方邻居的下方
 local function PositionItems()
     if not MerchantFrame or not MerchantFrame:IsShown() then return end
 
@@ -330,10 +334,10 @@ local function PositionItems()
             item:ClearAllPoints()
             if i == 1 then
                 item:SetPoint("TOPLEFT", 11, -69)
-            elseif (i - 1) % cols == 0 then
-                item:SetPoint("TOPLEFT", _G["MerchantItem" .. (i - cols)], "BOTTOMLEFT", 0, -offsetY)
+            elseif (i - 1) % rows == 0 then
+                item:SetPoint("TOPLEFT", _G["MerchantItem" .. (i - rows)], "TOPRIGHT", SPACING_X, 0)
             else
-                item:SetPoint("TOPLEFT", _G["MerchantItem" .. (i - 1)], "TOPRIGHT", SPACING_X, 0)
+                item:SetPoint("TOPLEFT", _G["MerchantItem" .. (i - 1)], "BOTTOMLEFT", 0, -offsetY)
             end
         end
     end

@@ -36,5 +36,4 @@ Modules\DrawerMacro.lua
 Modules\MythicPlusTooltip.lua
 Modules\HideCrafter.lua
 Modules\QuickFocus.lua
-Modules\ThreatMonitor.lua
 Core\Config.lua

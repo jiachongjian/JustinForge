@@ -2,18 +2,19 @@
 -- JustinForge 模块10: 虫洞抽屉宏 (DrawerMacro.lua)
 -- ============================================================
 -- 功能描述：
---   自动创建宏「JF虫洞」，玩家将其拖到动作条后点击，会在鼠标
---   位置展开一个贴近暴雪原生 UI 风格的抽屉窗口，窗口内以网格
---   排列所有虫洞传送玩具（诺森德 → 奎尔萨拉斯），点击任意
---   按钮立即使用对应玩具并自动收起抽屉。
+--   玩家手动创建一个宏，内容填入固定命令 /click JFDrawerBtn1
+--   （仅一行，不占宏数量配额之外的任何动态内容，也不受 255 字符
+--   限制影响）。点击宏会在鼠标位置展开一个贴近暴雪原生 UI 风格
+--   的抽屉窗口，窗口内以网格排列所有虫洞传送玩具（诺森德 →
+--   奎尔萨拉斯），点击任意按钮立即使用对应玩具并自动收起抽屉。
 --
 -- 与 Plumber 抽屉宏的区别：
 --   Plumber 需要用户在宏里手写 #plumber:drawer 和若干 #/use 行，
 --   插件解析宏文本后动态改写宏体注入 /click 行，且每次展开都要
 --   在安全代码片段里重新配置按钮属性（macrotext 等）。
---   本模块的玩具列表写死在插件中（DRAWERS 表），安全按钮的属性
---   在脱战时一次性配置完毕，战斗中仅做 显示/隐藏/移动 操作，
---   宏也由插件自动创建，玩家零配置即可使用。
+--   本模块的玩具列表写死在插件中（DRAWERS 表，最多支持 30 个位置），
+--   安全按钮的属性在脱战时一次性配置完毕，战斗中仅做
+--   显示/隐藏/移动 操作，宏体永远只有一行固定命令。
 --
 -- 实现原理（安全机制借鉴自 Plumber 的 SpellFlyout_Secure）：
 --   1. 安全根容器 JFDrawerRoot：全屏不可见 Button（Frame 无 OnClick
@@ -40,12 +41,12 @@
 local addonName, ns = ...
 
 local L = ns.L
-local Util = ns.Util
 
 -- 固定样式常量（均取自暴雪原生动作条按钮规格）
 local BUTTON_SIZE         = 36   -- 原生动作条按钮尺寸
 local NORMAL_TEXTURE_SIZE = 66   -- 原生 NormalTexture (UI-Quickslot2) 尺寸
-local BUTTONS_PER_ROW     = 4    -- 抽屉每行按钮数
+local BUTTONS_PER_ROW     = 6    -- 抽屉每行按钮数
+local MAX_ITEMS           = 30   -- 每个抽屉最多 30 个位置（6 列 × 5 行）
 local BUTTON_GAP          = 4    -- 按钮间距
 local PANEL_PADDING       = 8    -- 抽屉面板内边距
 local FALLBACK_ICON       = 134400 -- INV_MISC_QUESTIONMARK（物品图标未缓存时兜底）
@@ -57,12 +58,12 @@ local CLOSE_BUTTON_NAME   = "JFDrawerClose" -- 关闭抽屉处理器
 -- ============================================================
 -- 抽屉定义表（写死的抽屉内容）
 -- ============================================================
--- 每个抽屉 = 一个自动创建的宏 + 一组物品按钮
+-- 每个抽屉 = 一个固定 /click 命令 + 一组物品按钮（最多 MAX_ITEMS 个）
 -- 新增抽屉时追加一项即可，无需改动其他代码：
---   { macroName = "JF炉石", items = { 54452, 64488, ... } },
+--   { items = { 54452, 64488, ... } },
+-- 第 N 个抽屉的宏内容为 /click JFDrawerBtn<N>（由玩家手动创建）
 local DRAWERS = {
     {
-        macroName = "JF虫洞",   -- 自动创建的宏名称（带 JF 前缀避免覆盖玩家同名宏）
         items = {
             48933,   -- 虫洞发生器：诺森德
             87215,   -- 虫洞发生器：潘达利亚
@@ -96,7 +97,6 @@ local panels = {}             -- 抽屉面板（root 的子框架）
 local toggleSnippet           -- 处理器 _onclick 安全代码片段（抽屉数量格式化后缓存）
 local built = false           -- 安全 UI 是否已构建（仅脱战时构建一次）
 local pendingBuild = false    -- 启用时处于战斗锁定，等待脱战后补建
-local pendingMacro = false    -- 创建宏时处于战斗锁定，等待脱战后补建
 local pendingState = nil      -- 启用/禁用切换时处于战斗锁定，等待脱战后应用
 
 -- ============================================================
@@ -304,10 +304,11 @@ local function BuildSecureUI()
         panel:SetClampedToScreen(true)                   -- 鼠标贴近屏幕边缘时面板不出屏
         panel:SetClampRectInsets(-8, 8, 8, -8)
 
-        -- 网格排列按钮
+        -- 网格排列按钮（数量超出 MAX_ITEMS 的部分截断忽略）
         drawer.buttons = {}
-        local numItems = #drawer.items
-        for i, itemID in ipairs(drawer.items) do
+        local numItems = math.min(#drawer.items, MAX_ITEMS)
+        for i = 1, numItems do
+            local itemID = drawer.items[i]
             local btn = CreateFlyoutButton(panel, itemID)
             local col = (i - 1) % BUTTONS_PER_ROW
             local row = math.floor((i - 1) / BUTTONS_PER_ROW)
@@ -365,46 +366,6 @@ local function BuildSecureUI()
 end
 
 -- ------------------------------------------------------------
--- EnsureMacros: 自动创建/修复抽屉宏（仅限脱战状态调用）
--- ------------------------------------------------------------
--- - 宏不存在 → 创建通用宏（全账号共享），图标取首个玩具图标
--- - 宏存在且为本插件创建（宏体含处理器名）→ 必要时修正宏体
--- - 宏存在但为玩家自建（同名冲突）→ 跳过并提示，不覆盖玩家数据
-local function EnsureMacros()
-    if InCombatLockdown() then
-        pendingMacro = true
-        return
-    end
-    pendingMacro = false
-
-    for index, drawer in ipairs(DRAWERS) do
-        local body = "/click " .. HANDLER_NAME_PREFIX .. index
-        local macroIndex = GetMacroIndexByName(drawer.macroName)
-
-        if macroIndex and macroIndex > 0 then
-            local _, existingIcon, existing = GetMacroInfo(macroIndex)
-            if existing and existing:find(HANDLER_NAME_PREFIX, 1, true) then
-                if existing ~= body then
-                    -- 保留原图标（EditMacro 图标参数传 nil 会重置为问号）
-                    EditMacro(macroIndex, drawer.macroName, existingIcon, body)
-                end
-            else
-                Util:Print(L["DrawerMacro_NameConflict"]:format(drawer.macroName))
-            end
-        else
-            local numAccountMacros = GetNumMacros()
-            if numAccountMacros < (MAX_ACCOUNT_MACROS or 120) then
-                local icon = C_Item.GetItemIconByID(drawer.items[1]) or FALLBACK_ICON
-                CreateMacro(drawer.macroName, icon, body)
-                Util:Print(L["DrawerMacro_Created"]:format(drawer.macroName))
-            else
-                Util:Print(L["DrawerMacro_NoSpace"]:format(drawer.macroName))
-            end
-        end
-    end
-end
-
--- ------------------------------------------------------------
 -- ApplyEnabledState: 应用启用/禁用状态（仅限脱战状态调用）
 -- ------------------------------------------------------------
 -- 禁用 = 清空处理器的 _onclick 片段（宏点击不再有任何反应）
@@ -434,16 +395,12 @@ local function OnEvent(_, event)
             pendingBuild = false
             if module.enabled and BuildSecureUI() then
                 RefreshButtonStates()
-                EnsureMacros()
             end
         end
         if pendingState ~= nil then
             local state = pendingState
             pendingState = nil
             ApplyEnabledState(state)
-        end
-        if pendingMacro then
-            EnsureMacros()
         end
         -- 禁用期间的延迟清理完成后，脱战事件也不再需要
         if not module.enabled and not pendingBuild and pendingState == nil then
@@ -459,8 +416,7 @@ end
 -- ------------------------------------------------------------
 -- 1. 注册脱战/玩具更新事件
 -- 2. 首次启用时构建安全 UI（战斗中则推迟到脱战）
--- 3. 自动创建抽屉宏（战斗中则推迟到脱战）
--- 4. 再次启用时恢复处理器的点击片段
+-- 3. 再次启用时恢复处理器的点击片段
 function module:OnEnable()
     if not eventFrame then
         eventFrame = CreateFrame("Frame")
@@ -472,7 +428,6 @@ function module:OnEnable()
     if not built then
         if BuildSecureUI() then
             RefreshButtonStates()
-            EnsureMacros()
         else
             pendingBuild = true
         end
@@ -486,8 +441,7 @@ end
 -- ------------------------------------------------------------
 -- 1. 解绑事件（战斗中保留脱战事件以完成延迟清理），实现零开销
 -- 2. 清空处理器点击片段并收起抽屉（战斗中推迟到脱战）
--- 注意：不删除已创建的宏（避免误删玩家已摆上动作条的宏），
---       禁用后宏点击无反应，玩家可自行在宏界面删除
+-- 注意：宏由玩家手动创建，本模块从不触碰；禁用后宏点击无反应
 function module:OnDisable()
     if not eventFrame then return end
     eventFrame:UnregisterEvent("TOYS_UPDATED")

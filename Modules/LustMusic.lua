@@ -25,8 +25,9 @@
 --      结束音）、无随机选曲、无 Ace3 依赖，仅保留「生效即循环」。
 --
 -- 音频文件要求：
---   将 lust.ogg 放入游戏客户端的 Interface 目录根部
---   （与 Interface\AddOns 同级），即 Interface\lust.ogg。
+--   将 lust.ogg 放入插件目录（Interface\AddOns\JustinForge\lust.ogg，
+--   推荐，随插件一起管理）或游戏客户端 Interface 目录根部
+--   （Interface\lust.ogg），两处任选其一，模块会按序自动探测。
 --   注意：WoW 仅在游戏启动时扫描文件，新增/替换该文件后需完全
 --   重启游戏客户端才能生效（/reload 无效）。
 -- ============================================================
@@ -36,8 +37,13 @@ local addonName, ns = ...
 local L = ns.L
 local Util = ns.Util
 
--- 音频文件路径：游戏 Interface 目录根部（非插件目录）
-local SOUND_FILE = "Interface\\lust.ogg"
+-- 音频文件候选路径：优先插件目录（推荐，随插件一起被客户端扫描），
+-- 其次游戏 Interface 目录根部；PlaySoundFile 对不存在的文件静默返回
+-- false，因此按序探测并以首次成功为准缓存
+local SOUND_FILE_CANDIDATES = {
+    "Interface\\AddOns\\" .. addonName .. "\\lust.ogg",
+    "Interface\\lust.ogg",
+}
 -- 播放声道：Master 主声道（受主音量控制）
 local SOUND_CHANNEL = "Master"
 -- 循环补播检测间隔（秒）：越小衔接越紧密，0.1 与 HighOnHaste 一致
@@ -82,13 +88,21 @@ local module = ns.Module:Register({
     defaultEnabled = true,
 })
 
--- 模块附加设置：测试按钮（在设置面板中显示为自动复位的勾选框）
+-- 模块附加设置：测试播放/暂停按钮（在设置面板中显示为原生按钮）
 module.options = {
     {
-        type    = "button",
-        key     = "testSound",
-        name    = L["LustMusic_Test"],
-        tooltip = L["LustMusic_TestTip"],
+        type       = "button",
+        key        = "playTest",
+        name       = L["LustMusic_Play"],
+        buttonText = "播放",
+        tooltip    = L["LustMusic_PlayTip"],
+    },
+    {
+        type       = "button",
+        key        = "stopTest",
+        name       = L["LustMusic_Stop"],
+        buttonText = "暂停",
+        tooltip    = L["LustMusic_StopTip"],
     },
 }
 
@@ -100,12 +114,18 @@ local soundHandle
 local loopTicker
 -- 嗜血 BUFF 当前是否生效
 local lustActive = false
+-- 测试播放是否生效（设置面板「播放」按钮开启的循环）
+local testActive = false
 -- 疲惫 DEBUFF 检测：登录宽限期标记
 local isReady = false
 -- 疲惫 DEBUFF 去重键（spellID:expirationTime），避免重复提示
 local lastExhaustionKey
 -- 疲惫 DEBUFF 检查节流标记，避免高频 UNIT_AURA 创建过多计时器
 local exhaustionCheckPending = false
+-- 已成功播放的音频路径，命中后直接复用不再探测
+local resolvedSoundPath
+-- 本次启用期间是否已提示过文件缺失（避免每次嗜血重复刷屏）
+local missingFileWarned = false
 
 -- ------------------------------------------------------------
 -- HasLustBuff: 检测玩家身上是否存在任意一种嗜血类增益
@@ -152,13 +172,38 @@ local function CheckExhaustionNotification()
 end
 
 -- ------------------------------------------------------------
--- PlayOnce: 播放一次音频并保存句柄
+-- TryPlaySound: 按候选路径尝试播放一次音频
+-- ------------------------------------------------------------
+-- PlaySoundFile 对不存在的文件静默返回 willPlay=false，因此按序
+-- 探测全部候选路径；首次成功后缓存路径，后续直接复用。
+-- 返回 willPlay, handle（失败时为 false, nil）
+local function TryPlaySound()
+    if resolvedSoundPath then
+        local willPlay, handle = PlaySoundFile(resolvedSoundPath, SOUND_CHANNEL)
+        if willPlay and handle then
+            return willPlay, handle
+        end
+    end
+    for _, path in ipairs(SOUND_FILE_CANDIDATES) do
+        local willPlay, handle = PlaySoundFile(path, SOUND_CHANNEL)
+        if willPlay and handle then
+            resolvedSoundPath = path
+            return willPlay, handle
+        end
+    end
+    return false, nil
+end
+
+-- ------------------------------------------------------------
+-- PlayOnce: 播放一次音频并保存句柄，返回是否成功
 -- ------------------------------------------------------------
 local function PlayOnce()
-    local willPlay, handle = PlaySoundFile(SOUND_FILE, SOUND_CHANNEL)
+    local willPlay, handle = TryPlaySound()
     if willPlay and handle then
         soundHandle = handle
+        return true
     end
+    return false
 end
 
 -- ------------------------------------------------------------
@@ -180,10 +225,18 @@ end
 -- ------------------------------------------------------------
 local function StartLoop()
     StopLoop()
-    PlayOnce()
+    if not PlayOnce() then
+        -- 文件缺失或声道不可用：一次性提示安装方法并放弃本次循环，
+        -- 避免补播计时器对不存在的文件静默高频重试
+        if not missingFileWarned then
+            missingFileWarned = true
+            Util:Print(L["LustMusic_FileMissing"])
+        end
+        return
+    end
 
     loopTicker = C_Timer.NewTicker(LOOP_CHECK_INTERVAL, function()
-        if not lustActive then return end
+        if not lustActive and not testActive then return end
 
         local playing = false
         if soundHandle and C_Sound and C_Sound.IsPlaying then
@@ -207,18 +260,35 @@ local function SetLustActive(active)
         StartLoop()
     else
         StopLoop()
+        -- 测试播放进行中：嗜血结束后恢复测试循环
+        if testActive then
+            StartLoop()
+        end
     end
 end
 
 -- ------------------------------------------------------------
--- TestPlay: 测试播放音频（供设置面板测试按钮调用）
+-- TestPlay / TestStop: 测试音频的播放与暂停（供设置面板按钮调用）
 -- ------------------------------------------------------------
+-- 播放走与嗜血相同的循环逻辑（testActive 标记），便于验证循环补播；
+-- 暂停仅停止测试循环，不影响正在进行的嗜血循环
 local function TestPlay()
-    local willPlay = PlaySoundFile(SOUND_FILE, SOUND_CHANNEL)
-    if willPlay then
+    testActive = true
+    StartLoop()
+    if soundHandle then
         Util:Print(L["LustMusic_TestSuccess"])
     else
+        testActive = false
         Util:Print(L["LustMusic_TestFailed"])
+    end
+end
+
+local function TestStop()
+    testActive = false
+    StopLoop()
+    -- 嗜血仍在生效：恢复嗜血循环
+    if lustActive then
+        StartLoop()
     end
 end
 
@@ -266,8 +336,10 @@ function module:OnEnable()
     -- 重置疲惫 DEBUFF 检测状态并启动宽限期
     -- PLAYER_ENTERING_WORLD 会在登录后再次触发，重新计时
     isReady = false
+    testActive = false
     lastExhaustionKey = nil
     exhaustionCheckPending = false
+    missingFileWarned = false
     C_Timer.After(LOGIN_GRACE_PERIOD, function()
         isReady = true
     end)
@@ -283,6 +355,7 @@ function module:OnDisable()
         eventFrame:UnregisterAllEvents()
     end
     lustActive = false
+    testActive = false
     isReady = false
     lastExhaustionKey = nil
     exhaustionCheckPending = false
@@ -293,7 +366,9 @@ end
 -- OnButtonClicked: 设置面板按钮回调
 -- ------------------------------------------------------------
 function module:OnButtonClicked(key)
-    if key == "testSound" then
+    if key == "playTest" then
         TestPlay()
+    elseif key == "stopTest" then
+        TestStop()
     end
 end

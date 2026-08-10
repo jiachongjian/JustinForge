@@ -2,15 +2,18 @@
 -- JustinForge 模块8: 聊天频道快捷栏 (ChatChannelBar.lua)
 -- ============================================================
 -- 功能描述：
---   在聊天框附近提供一排单字按钮（世/说/喊/队/会/副/团/骰/确/倒），
---   点击聊天类按钮直接以对应频道激活聊天输入框，点击命令类按钮
+--   在聊天框附近提供一排单字按钮（说/喊/队/会/副/团/世/骰/确/倒），
+--   左键点击聊天类按钮直接以对应频道激活聊天输入框，点击命令类按钮
 --   直接执行斜杠指令（/roll、/rc、/cd 10）。
+--   「世」按钮（大脚世界频道）支持右键：未加入时自动加入频道，
+--   已加入时退出频道。
+--   按钮外观使用暴雪原生方形按钮模板（UIPanelSquareButton）。
 --   （实现逻辑提取自 ExwindTools 的 ExTools.ChatChannelBar，去除其
 --     编辑模式/吸附/每频道自定义等复杂设置，仅保留坐标定位）
 --
 -- 定位方式：
 --   模块不提供拖动，位置由设置面板中的「水平位置 (X)」
---   「垂直位置 (Y)」两个滑条决定（以屏幕左下角为原点，单位像素）。
+--   「垂直位置 (Y)」两个滑条决定（以屏幕中心为原点，左/下为负）。
 --   坐标持久化于 JustinForgeDB.profile.chatChannelBar.posX/posY。
 --
 -- 实现要点：
@@ -40,32 +43,38 @@ local screenHeight = math.floor(UIParent:GetHeight() or 1080)
 -- ============================================================
 -- 模块注册（附带坐标设置项，Config.lua 自动生成为滑条）
 -- ============================================================
+-- 坐标以屏幕中心为原点：默认位置折算自旧的屏幕左下角 (46, 207)
+local halfWidth = math.floor(screenWidth / 2)
+local halfHeight = math.floor(screenHeight / 2)
+
 local module = ns.Module:Register({
     key            = "chatChannelBar",
     name           = L["ChatChannelBar_Name"],
     description    = L["ChatChannelBar_Desc"],
     defaultEnabled = true,
     options = {
-        { type = "slider", key = "posX", name = L["ChatChannelBar_PosX"], min = 0, max = screenWidth,  step = 1, default = 46 },
-        { type = "slider", key = "posY", name = L["ChatChannelBar_PosY"], min = 0, max = screenHeight, step = 1, default = 207 },
+        { type = "slider", key = "posX", name = L["ChatChannelBar_PosX"], min = -halfWidth,  max = halfWidth,  step = 1, default = 46 - halfWidth },
+        { type = "slider", key = "posY", name = L["ChatChannelBar_PosY"], min = -halfHeight, max = halfHeight, step = 1, default = 207 - halfHeight },
     },
 })
 
--- 频道定义（固定列表）：
+-- 频道定义（固定列表，世界频道位于「团」之后）：
 --   chat  普通聊天频道，点击后以该频道打开输入框
---   named 具名频道（世界频道），先解析频道号再打开输入框
+--   named 具名频道（世界频道），左键先解析频道号再打开输入框；
+--         右键在未加入时加入频道、已加入时退出频道
 --   slash 斜杠指令，点击后直接执行
+local WORLD_CHANNEL_NAME = "大脚世界频道"
 local CHANNELS = {
-    { name = "世", cmd = "大脚世界频道", named = true, r = 1,    g = 0.5,  b = 0.5 },
-    { name = "说", cmd = "/s",           chat = true,  r = 1,    g = 1,    b = 1 },
-    { name = "喊", cmd = "/y",           chat = true,  r = 1,    g = 0.25, b = 0.25 },
-    { name = "队", cmd = "/p",           chat = true,  r = 0.67, g = 0.67, b = 1 },
-    { name = "会", cmd = "/g",           chat = true,  r = 0.25, g = 1,    b = 0.25 },
-    { name = "副", cmd = "/i",           chat = true,  r = 1,    g = 0.5,  b = 0 },
-    { name = "团", cmd = "/raid",        chat = true,  r = 1,    g = 0.5,  b = 0 },
-    { name = "骰", cmd = "/roll",        slash = true, r = 1,    g = 1,    b = 0 },
-    { name = "确", cmd = "/rc",          slash = true, r = 0,    g = 1,    b = 1 },
-    { name = "倒", cmd = "/cd 10",       slash = true, r = 1,    g = 0,    b = 1 },
+    { name = "说", cmd = "/s",                chat = true,  r = 1,    g = 1,    b = 1 },
+    { name = "喊", cmd = "/y",                chat = true,  r = 1,    g = 0.25, b = 0.25 },
+    { name = "队", cmd = "/p",                chat = true,  r = 0.67, g = 0.67, b = 1 },
+    { name = "会", cmd = "/g",                chat = true,  r = 0.25, g = 1,    b = 0.25 },
+    { name = "副", cmd = "/i",                chat = true,  r = 1,    g = 0.5,  b = 0 },
+    { name = "团", cmd = "/raid",             chat = true,  r = 1,    g = 0.5,  b = 0 },
+    { name = "世", cmd = WORLD_CHANNEL_NAME,  named = true, r = 1,    g = 0.5,  b = 0.5 },
+    { name = "骰", cmd = "/roll",             slash = true, r = 1,    g = 1,    b = 0 },
+    { name = "确", cmd = "/rc",               slash = true, r = 0,    g = 1,    b = 1 },
+    { name = "倒", cmd = "/cd 10",            slash = true, r = 1,    g = 0,    b = 1 },
 }
 
 local barFrame = nil
@@ -141,11 +150,32 @@ local function OpenNamedChannel(channelName)
     return OpenChatWithSlash("/" .. id .. " ")
 end
 
+-- 具名频道右键：未加入则加入，已加入则退出
+local function ToggleNamedChannel(channelName)
+    if not GetChannelName then return end
+    local id = GetChannelName(channelName)
+    if id and id > 0 then
+        if LeaveChannelByName then
+            LeaveChannelByName(channelName)
+        end
+        Util:Print(L["ChatChannelBar_Left"])
+    else
+        if JoinChannelByName then
+            JoinChannelByName(channelName)
+        end
+        Util:Print(L["ChatChannelBar_Joined"])
+    end
+end
+
 -- ------------------------------------------------------------
--- 按钮点击分发
+-- 按钮点击分发（button = "LeftButton" / "RightButton"）
 -- ------------------------------------------------------------
-local function OnButtonClick(channel)
+local function OnButtonClick(channel, button)
     if channel.named then
+        if button == "RightButton" then
+            ToggleNamedChannel(channel.cmd)
+            return
+        end
         if not OpenNamedChannel(channel.cmd) then
             Util:Print(L["ChatChannelBar_NoChannel"] .. tostring(channel.cmd))
         end
@@ -175,11 +205,13 @@ local function CreateBarFrame()
     barFrame:SetSize(width, BUTTON_SIZE + BUTTON_PADDING * 2)
 
     for i, channel in ipairs(CHANNELS) do
-        local btn = CreateFrame("Frame", "JFChatChannelBtn" .. i, barFrame)
+        -- 暴雪原生方形按钮模板（UI-SquareButton 系列贴图，自带按下/禁用/高亮态）
+        local btn = CreateFrame("Button", "JFChatChannelBtn" .. i, barFrame, "UIPanelSquareButton")
         btn:SetSize(BUTTON_SIZE, BUTTON_SIZE)
         btn:SetPoint("LEFT", barFrame, "LEFT", BUTTON_PADDING + (i - 1) * (BUTTON_SIZE + BUTTON_PADDING), 0)
-        btn:EnableMouse(true)
+        btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 
+        -- 频道文字作为覆盖层显示在按钮贴图之上
         local text = btn:CreateFontString(nil, "OVERLAY")
         text:SetPoint("CENTER")
         text:SetFont(STANDARD_TEXT_FONT, FONT_SIZE, "OUTLINE")
@@ -188,13 +220,9 @@ local function CreateBarFrame()
         btn.text = text
         btn.channelData = channel
 
-        -- 悬停放大、按下半透明，提供基础点击反馈
-        btn:SetScript("OnEnter", function(self) self.text:SetScale(1.2) end)
-        btn:SetScript("OnLeave", function(self) self.text:SetScale(1.0) end)
-        btn:SetScript("OnMouseDown", function(self) self.text:SetAlpha(0.7) end)
-        btn:SetScript("OnMouseUp", function(self)
-            self.text:SetAlpha(1.0)
-            OnButtonClick(self.channelData)
+        -- 模板自带按下/高亮视觉反馈，点击通过 OnClick 分发左右键
+        btn:SetScript("OnClick", function(self, button)
+            OnButtonClick(self.channelData, button)
         end)
 
         buttons[i] = btn
@@ -202,13 +230,14 @@ local function CreateBarFrame()
 end
 
 -- ------------------------------------------------------------
--- ApplyPosition: 按 DB 中的坐标定位（屏幕左下角为原点）
+-- ApplyPosition: 按 DB 中的坐标定位（屏幕中心为原点）
 -- ------------------------------------------------------------
 local function ApplyPosition()
     if not barFrame then return end
     local db = ns.db.profile.chatChannelBar
     barFrame:ClearAllPoints()
-    barFrame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", db.posX or 46, db.posY or 207)
+    barFrame:SetPoint("BOTTOMLEFT", UIParent, "CENTER",
+        db.posX or (46 - halfWidth), db.posY or (207 - halfHeight))
 end
 
 -- ------------------------------------------------------------

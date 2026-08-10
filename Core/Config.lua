@@ -22,8 +22,11 @@
 --
 -- 模块附加设置（options）约定：
 --   mod.options = {
---       { type = "slider", key = "posX", name = "...", min = 0,
---         max = 2000, step = 1, default = 46, tooltip = "..." },
+--       { type = "slider", key = "posX", name = "...", min = -960,
+--         max = 960, step = 1, default = 0, tooltip = "..." },
+--       -- 坐标类滑条以屏幕中心为原点（min 负、max 正，0 居中）
+--       { type = "button", key = "playTest", name = "...",
+--         buttonText = "播放", tooltip = "..." },
 --   }
 --   值绑定到 DB.profile[mod.key][opt.key]，变化时回调
 --   mod:OnOptionChanged(opt.key, value)（模块可自行实现）
@@ -63,7 +66,8 @@ end
 -- RegisterModuleOptions: 为模块声明的附加设置生成控件
 -- ------------------------------------------------------------
 -- 支持 slider（数值类设置）和 button（触发式按钮）
--- button 类型使用代理勾选框实现：勾选后触发回调并自动复位
+-- slider 右侧显示当前数值；button 优先用原生按钮控件，
+-- API 不可用时回退为「勾选后触发并自动复位」的代理勾选框
 local function RegisterModuleOptions(category, mod, dbEntry)
     if not mod.options then return end
 
@@ -79,6 +83,13 @@ local function RegisterModuleOptions(category, mod, dbEntry)
                 opt.default
             )
             local sliderOptions = Settings.CreateSliderOptions(opt.min, opt.max, opt.step or 1)
+            -- 在滑条右侧显示当前数值（坐标类滑条为居中 0 的正负数）
+            -- pcall 保护：Label/SetLabelFormatter 若被暴雪改动则静默退回纯滑条
+            pcall(function()
+                sliderOptions:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right, function(value)
+                    return tostring(math.floor(value + 0.5))
+                end)
+            end)
             Settings.CreateSlider(category, setting, sliderOptions, opt.tooltip)
 
             -- 滑条变化时通知模块（值已由绑定写入 dbEntry）
@@ -92,33 +103,47 @@ local function RegisterModuleOptions(category, mod, dbEntry)
                 end
             end)
         elseif opt.type == "button" then
-            -- 按钮类型：用代理勾选框模拟，勾选即触发、触发后自动复位
-            local setting = Settings.RegisterAddOnSetting(
-                category,
-                "JustinForge." .. mod.key .. "." .. opt.key,
-                opt.key,
-                dbEntry,
-                Settings.VarType.Boolean,
-                opt.name,
-                false
-            )
-            Settings.CreateCheckbox(category, setting, opt.tooltip)
-
-            setting:SetValueChangedCallback(function(_, value)
-                if value then
-                    if mod.OnButtonClicked then
-                        -- pcall 保护：按钮动作抛异常时聊天框提示
-                        local ok, err = pcall(mod.OnButtonClicked, mod, opt.key)
-                        if not ok then
-                            ns.Util:Error((ns.L["Error_OptionCallback"]):format(opt.name or opt.key, tostring(err)))
-                        end
+            -- 按钮类型：优先使用原生按钮控件（ButtonControlTemplate），
+            -- API 不可用时回退为「勾选即触发、触发后自动复位」的代理勾选框
+            local function FireButton()
+                if mod.OnButtonClicked then
+                    -- pcall 保护：按钮动作抛异常时聊天框提示
+                    local ok, err = pcall(mod.OnButtonClicked, mod, opt.key)
+                    if not ok then
+                        ns.Util:Error((ns.L["Error_OptionCallback"]):format(opt.name or opt.key, tostring(err)))
                     end
-                    -- 延迟到下一帧复位勾选框，避免与当前值变更事件冲突
-                    C_Timer.After(0, function()
-                        setting:SetValue(false)
-                    end)
                 end
+            end
+
+            local buttonRegistered = pcall(function()
+                local layout = category:GetLayout()
+                layout:AddInitializer(Settings.CreateButtonInitializer(
+                    opt.name, opt.buttonText or opt.name, opt.tooltip, FireButton))
             end)
+
+            if not buttonRegistered then
+                -- 回退方案：代理勾选框
+                local setting = Settings.RegisterAddOnSetting(
+                    category,
+                    "JustinForge." .. mod.key .. "." .. opt.key,
+                    opt.key,
+                    dbEntry,
+                    Settings.VarType.Boolean,
+                    opt.name,
+                    false
+                )
+                Settings.CreateCheckbox(category, setting, opt.tooltip)
+
+                setting:SetValueChangedCallback(function(_, value)
+                    if value then
+                        FireButton()
+                        -- 延迟到下一帧复位勾选框，避免与当前值变更事件冲突
+                        C_Timer.After(0, function()
+                            setting:SetValue(false)
+                        end)
+                    end
+                end)
+            end
         end
     end
 end
@@ -146,7 +171,13 @@ function ns.Config:Init()
         local category = Settings.RegisterVerticalLayoutCategory(title)
 
         -- 遍历所有已注册模块，为每个模块生成 Checkbox 及附加设置控件
+        -- 每个模块前插入一个分组标题，使同一功能的设置项在视觉上聚为一组
+        local layout = category:GetLayout()
         for _, mod in ipairs(ns.Module:GetAll()) do
+            -- 分组标题（API 若被暴雪改动则静默跳过，不影响控件注册）
+            pcall(function()
+                layout:AddInitializer(Settings.CreateSectionHeaderInitializer(mod.name))
+            end)
             local dbEntry = ns.db.profile[mod.key]
             RegisterModuleCheckbox(category, mod, dbEntry)
             RegisterModuleOptions(category, mod, dbEntry)
