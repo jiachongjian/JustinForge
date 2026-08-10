@@ -25,6 +25,8 @@ L["AddonDesc"] = "一系列独立的实用功能，可单独启用或禁用。"
 L["Error_ModuleEnable"] = "模块「%s」启用时发生异常：%s"
 L["Error_ModuleDisable"] = "模块「%s」禁用时发生异常：%s"
 L["Error_ConfigInit"] = "设置面板初始化失败：%s"
+L["Error_ConfigNoAPI"] = "设置面板初始化失败：游戏设置接口（Settings API）不可用，请检查客户端版本兼容性。"
+L["Error_ConfigModule"] = "设置面板注册「%s」的设置项时发生异常：%s"
 L["Error_OptionCallback"] = "设置项「%s」回调执行时发生异常：%s"
 L["Error_Init"] = "插件初始化过程中发生异常：%s"
 
