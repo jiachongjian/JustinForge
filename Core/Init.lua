@@ -29,9 +29,26 @@ ns.debug = false
 -- 新增模块时在此处添加一行默认配置，键名需与 Module:Register 中的 key 完全一致
 local defaults = {
     profile = {
-        guildCloak     = { enabled = true },  -- 功能1：公会披风自动还原
-        mapCenter      = { enabled = true },  -- 功能2：地图窗口居中
-        merchantExpand = { enabled = true },  -- 功能3：商人窗口扩展
+        guildCloak      = { enabled = true },  -- 功能1：公会披风自动还原
+        mapCenter       = { enabled = true },  -- 功能2：地图窗口居中
+        -- 功能3：商人窗口扩展（columns 为物品显示列数，范围 2-5）
+        merchantExpand  = { enabled = true, columns = 4 },
+        lustMusic       = { enabled = true },  -- 功能4：嗜血音乐循环
+        druidFlightForm = { enabled = true },  -- 功能5：德鲁伊自动取消旅行形态
+        chatHideLearn   = { enabled = true },  -- 功能6：隐藏学习/遗忘消息
+        macroEnhance    = { enabled = true },  -- 功能7：宏界面增强
+        -- 功能8：聊天频道快捷栏（posX/posY 为快捷栏左下角相对屏幕左下角的像素坐标）
+        chatChannelBar  = { enabled = true, posX = 46, posY = 207 },
+        -- 功能9：人物属性面板（point/posX/posY 为面板拖动后保存的锚点位置）
+        characterStats  = { enabled = true },
+        -- 功能10：虫洞抽屉宏（自动创建宏「JF虫洞」，点击展开虫洞玩具抽屉）
+        drawerMacro     = { enabled = true },
+        -- 功能11：鼠标提示大秘境信息（评分/钥石/各副本最佳成绩）
+        mythicPlusTooltip = { enabled = true },
+        hideCrafter     = { enabled = true },  -- 功能12：隐藏制造业制造者
+        quickFocus      = { enabled = true },  -- 功能13：Shift+左键快速焦点
+        -- 功能14：仇恨预警（point/posX/posY 为面板拖动后保存的锚点位置）
+        threatMonitor   = { enabled = true },
     },
 }
 
@@ -99,14 +116,23 @@ eventFrame:SetScript("OnEvent", function(self, event, loadedAddon)
     -- ---- 步骤2：根据保存的开关状态启用模块 ----
     -- 此时 Module.lua 已加载（TOC 顺序在 Init 之后），注册表框架就绪
     -- EnableAll 会遍历所有已注册模块，按 DB 中的 enabled 字段决定是否调用 OnEnable
+    -- pcall 保护：单个模块的异常已在 Module.lua 内部捕获提示，
+    -- 此处兜底框架级异常（如 DB 结构损坏），防止中断后续设置面板初始化
     if ns.Module then
-        ns.Module:EnableAll()
+        local ok, err = pcall(function() ns.Module:EnableAll() end)
+        if not ok then
+            ns.Util:Error(((ns.L and ns.L["Error_Init"]) or "插件初始化过程中发生异常：%s"):format(tostring(err)))
+        end
     end
 
     -- ---- 步骤3：初始化设置面板 ----
     -- Config.lua 最后加载，此时所有模块已注册完毕
     -- Init 会遍历模块注册表，为每个模块生成一个原生 Checkbox
+    -- pcall 保护：Config:Init 内部已有捕获提示，此处兜底其外层异常
     if ns.Config then
-        ns.Config:Init()
+        local ok, err = pcall(function() ns.Config:Init() end)
+        if not ok then
+            ns.Util:Error(((ns.L and ns.L["Error_Init"]) or "插件初始化过程中发生异常：%s"):format(tostring(err)))
+        end
     end
 end)

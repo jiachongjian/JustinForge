@@ -18,6 +18,16 @@ local L = ns.L
 L["AddonTitle"] = "JustinForge 功能合集"
 L["AddonDesc"] = "一系列独立的实用功能，可单独启用或禁用。"
 
+-- ---- 异常提示字符串 ----
+-- 由 Core 中的 pcall 保护逻辑调用（Module.lua / Config.lua / Init.lua）
+-- 注意：Core\Init.lua 与 Core\Util.lua 加载早于本文件，但这些字符串仅在
+-- 运行时（ADDON_LOADED 之后）被引用，此时本地化表已就绪
+L["Error_ModuleEnable"] = "模块「%s」启用时发生异常：%s"
+L["Error_ModuleDisable"] = "模块「%s」禁用时发生异常：%s"
+L["Error_ConfigInit"] = "设置面板初始化失败：%s"
+L["Error_OptionCallback"] = "设置项「%s」回调执行时发生异常：%s"
+L["Error_Init"] = "插件初始化过程中发生异常：%s"
+
 -- ---- 模块字符串 ----
 -- 每个模块需要两个字符串：
 --   _Name  模块名称（显示在设置面板的 Checkbox 标签）
@@ -25,7 +35,10 @@ L["AddonDesc"] = "一系列独立的实用功能，可单独启用或禁用。"
 
 -- 模块1：公会披风自动还原
 L["GuildCloak_Name"] = "公会披风自动还原"
-L["GuildCloak_Desc"] = "使用公会阵营披风后，自动将背槽装备换回使用前的物品。"
+L["GuildCloak_Desc"] = "使用公会阵营披风传送后，自动将背部装备换回传送前的物品。"
+L["GuildCloak_Restored"] = "已自动换回传送前的装备：%s"
+L["GuildCloak_NoPrevious"] = "检测到仍穿着公会披风 %s，但没有可还原的装备记录。"
+L["GuildCloak_ItemMissing"] = "检测到仍穿着公会披风 %s，但原装备 %s 不在背包中，无法自动换回。"
 
 -- 模块2：地图窗口居中
 L["MapCenter_Name"] = "地图窗口居中"
@@ -33,4 +46,84 @@ L["MapCenter_Desc"] = "每次打开地图窗口时，自动将窗口定位到屏
 
 -- 模块3：商人窗口扩展
 L["MerchantExpand_Name"] = "商人窗口扩展"
-L["MerchantExpand_Desc"] = "将商人窗口每页物品数从 10 扩展为 20，沿用原版布局方向翻倍排列。"
+L["MerchantExpand_Desc"] = "将商人窗口加宽为多列布局（列数可调，高度不变），回购页同步扩展，并重新排列修理、出售垃圾、翻页按钮与货币栏。禁用后需重载界面以完全复原锚点。"
+L["MerchantExpand_Columns"] = "物品显示列数"
+L["MerchantExpand_ColumnsTip"] = "商人窗口每行显示的物品列数（2-5）。商人页每页为 列数×5 个物品，回购页为 列数×6 个。"
+
+-- 模块4：嗜血音乐循环
+L["LustMusic_Name"] = "嗜血音乐循环"
+L["LustMusic_Desc"] = "自身获得嗜血/英勇/时间扭曲等增益期间，循环播放 Interface\\lust.ogg，增益消失后自动停止。队友开嗜血但你未获得增益时会聊天提示。需自行将 lust.ogg 放入游戏 Interface 目录并重启游戏。"
+L["LustMusic_MissedLust"] = "检测到队友开启了嗜血/英勇，但你未获得增益效果。"
+L["LustMusic_Test"] = "测试音乐播放"
+L["LustMusic_TestTip"] = "点击播放一次 lust.ogg，用于验证音频文件是否正确安装。"
+L["LustMusic_TestSuccess"] = "测试播放成功，音频文件正常。"
+L["LustMusic_TestFailed"] = "测试播放失败！请确认 lust.ogg 已放入游戏 Interface 目录根部，并完全重启游戏。"
+
+-- 模块5：德鲁伊自动取消旅行形态
+L["DruidFlightForm_Name"] = "德鲁伊自动取消旅行形态"
+L["DruidFlightForm_Desc"] = "在旅行形态下进入可飞行区域时，自动取消变形，重新施放旅行形态即可切换为飞行形态。"
+
+-- 模块6：隐藏学习/遗忘消息
+L["ChatHideLearn_Name"] = "隐藏学习/遗忘消息"
+L["ChatHideLearn_Desc"] = "在聊天窗口中隐藏系统消息，如「你学会了……」和「你遗忘了……」。"
+
+-- 模块7：宏界面增强
+L["MacroEnhance_Name"] = "宏界面增强"
+L["MacroEnhance_Desc"] = "加宽加高宏界面（每行 10 个宏、编辑框更大），并在图标选择弹窗中增加搜索框，支持按法术名称、图标文件名或图标 ID 过滤。"
+L["MacroEnhance_SearchHint"] = "搜索法术/图标ID"
+
+-- 模块8：聊天频道快捷栏
+L["ChatChannelBar_Name"] = "聊天频道快捷栏"
+L["ChatChannelBar_Desc"] = "在屏幕上显示一排频道按钮（世/说/喊/队/会/副/团/骰/确/倒），点击即切换到对应聊天频道或执行指令。通过下方坐标滑条调整位置（屏幕左下角为原点）。"
+L["ChatChannelBar_PosX"] = "快捷栏水平位置 (X)"
+L["ChatChannelBar_PosY"] = "快捷栏垂直位置 (Y)"
+L["ChatChannelBar_NoChannel"] = "未找到频道: "
+L["ChatChannelBar_CmdFailed"] = "指令执行失败: "
+L["ChatChannelBar_OpenFailed"] = "聊天框打开失败: "
+
+-- 模块9：人物属性面板
+L["CharacterStats_Name"] = "人物属性面板"
+L["CharacterStats_Desc"] = "在屏幕上常态显示人物属性面板，依次为：主属性、副属性（暴击/急速/精通/全能）、第三属性（吸血/闪避/加速，非0时显示）、坦克属性（护甲/躲闪/招架/格挡，非0时显示）、移动速度。左键拖动可移动位置。"
+L["CS_Primary"] = "主属性"
+L["CS_Strength"] = "力量"
+L["CS_Agility"] = "敏捷"
+L["CS_Intellect"] = "智力"
+L["CS_Crit"] = "暴击"
+L["CS_Haste"] = "急速"
+L["CS_Mastery"] = "精通"
+L["CS_Versa"] = "全能"
+L["CS_Leech"] = "吸血"
+L["CS_Avoidance"] = "闪避"
+L["CS_Speed"] = "加速"
+L["CS_Armor"] = "护甲"
+L["CS_Dodge"] = "躲闪"
+L["CS_Parry"] = "招架"
+L["CS_Block"] = "格挡"
+L["CS_MoveSpeed"] = "移动速度"
+
+-- 模块11：鼠标提示大秘境信息
+L["MythicPlusTooltip_Name"] = "鼠标提示大秘境信息"
+L["MythicPlusTooltip_Desc"] = "鼠标指向满级玩家时，在提示框中显示其本赛季大秘境总评分、当前钥石，以及每个大秘境的最佳层数与分数（限时按剩余时间标注 +3/+2/+1，超时显示灰色）。其他玩家的钥石通过 LibKeystone 兼容协议交换，可与 BigWigs/ElvUI/WindTools 用户互通；安装 Details 时也会读取其共享数据。"
+L["MPT_Header"] = "大秘境"
+L["MPT_Score"] = "评分"
+L["MPT_Keystone"] = "钥石"
+
+-- 模块12：隐藏制造业制造者
+L["HideCrafter_Name"] = "隐藏制造业制造者"
+L["HideCrafter_Desc"] = "在装备鼠标提示中隐藏制造业装备上的绿色「<制造者名字>」署名行。"
+
+-- 模块13：Shift+左键快速焦点
+L["QuickFocus_Name"] = "Shift+左键快速焦点"
+L["QuickFocus_Desc"] = "按住 Shift 并用左键点击场景中的单位或默认头像/小队/团队框体，将其设为焦点。禁用后自动还原框体属性。不支持姓名板。"
+
+-- 模块14：仇恨预警
+L["ThreatMonitor_Name"] = "仇恨预警"
+L["ThreatMonitor_Desc"] = "战斗中显示当前敌对目标对你的仇恨百分比预警：坦克专精在低于 100%（仇恨不稳/已丢失）时显示，治疗/输出专精在高于 80%（即将 OT）时显示。颜色随仇恨状态变化（白/黄/橙/红），越红越危险。面板可左键拖动位置。"
+L["ThreatMonitor_Label"] = "仇恨"
+
+-- 模块10：虫洞抽屉宏
+L["DrawerMacro_Name"] = "虫洞抽屉宏"
+L["DrawerMacro_Desc"] = "自动创建宏「JF虫洞」（首次启用时创建，需手动拖到动作条）。点击宏会在鼠标位置展开原生风格的抽屉窗口，网格展示全部虫洞传送玩具（诺森德至奎尔萨拉斯），点击即用并自动收起。未学会的玩具显示为灰色。禁用模块后宏将失效，可自行在宏界面删除。"
+L["DrawerMacro_Created"] = "已创建宏「%s」，输入 /macro 打开宏界面，将其拖到动作条即可使用。"
+L["DrawerMacro_NoSpace"] = "通用宏数量已达上限，无法创建宏「%s」，请清理后重载界面。"
+L["DrawerMacro_NameConflict"] = "已存在同名宏「%s」但并非本插件创建，为避免覆盖已跳过自动创建。"

@@ -26,4 +26,15 @@ Core\Module.lua
 Modules\GuildCloak.lua
 Modules\MapCenter.lua
 Modules\MerchantExpand.lua
+Modules\LustMusic.lua
+Modules\DruidFlightForm.lua
+Modules\ChatHideLearn.lua
+Modules\MacroEnhance.lua
+Modules\ChatChannelBar.lua
+Modules\CharacterStats.lua
+Modules\DrawerMacro.lua
+Modules\MythicPlusTooltip.lua
+Modules\HideCrafter.lua
+Modules\QuickFocus.lua
+Modules\ThreatMonitor.lua
 Core\Config.lua

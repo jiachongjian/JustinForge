@@ -34,6 +34,28 @@ local modules = {}
 local order = {}
 
 -- ------------------------------------------------------------
+-- SafeCallModuleMethod: pcall 包裹模块生命周期方法（内部函数）
+-- ------------------------------------------------------------
+-- 用途：OnEnable/OnDisable 由第三方功能模块实现，若其中抛出 Lua 异常，
+--   不加保护会中断整个启用/禁用流程（其他模块无法启用）
+-- 捕获到异常时通过 Util:Error 在聊天框提示模块名和错误信息
+-- 注意：仅捕获并提示，不改变 enabled 状态标记等原有逻辑
+-- 参数：
+--   mod    模块信息表
+--   method 方法名（"OnEnable" / "OnDisable"）
+-- 返回：pcall 的成功标志
+local function SafeCallModuleMethod(mod, method)
+    local ok, err = pcall(mod[method], mod)
+    if not ok then
+        local L = ns.L or {}
+        local fmt = L[method == "OnEnable" and "Error_ModuleEnable" or "Error_ModuleDisable"]
+            or "模块「%s」操作时发生异常：%s"
+        ns.Util:Error(fmt:format(mod.key, tostring(err)))
+    end
+    return ok
+end
+
+-- ------------------------------------------------------------
 -- Register: 注册一个新模块
 -- ------------------------------------------------------------
 -- 参数 info：模块信息表，必须包含 key 字段
@@ -68,9 +90,9 @@ function ns.Module:Enable(key)
     if ns.db and ns.db.profile and ns.db.profile[key] then
         ns.db.profile[key].enabled = true
     end
-    -- 调用模块的启用逻辑（注册事件、Hook 框架等）
+    -- 调用模块的启用逻辑（注册事件、Hook 框架等），异常时聊天框提示
     if mod.OnEnable then
-        mod:OnEnable()
+        SafeCallModuleMethod(mod, "OnEnable")
     end
     ns.Util:Debug("Module enabled: " .. key)
 end
@@ -91,9 +113,9 @@ function ns.Module:Disable(key)
     if ns.db and ns.db.profile and ns.db.profile[key] then
         ns.db.profile[key].enabled = false
     end
-    -- 调用模块的禁用逻辑（解绑事件、清理状态）
+    -- 调用模块的禁用逻辑（解绑事件、清理状态），异常时聊天框提示
     if mod.OnDisable then
-        mod:OnDisable()
+        SafeCallModuleMethod(mod, "OnDisable")
     end
     ns.Util:Debug("Module disabled: " .. key)
 end
@@ -113,7 +135,7 @@ function ns.Module:EnableAll()
         if dbEntry and dbEntry.enabled then
             mod.enabled = true
             if mod.OnEnable then
-                mod:OnEnable()
+                SafeCallModuleMethod(mod, "OnEnable")
             end
             ns.Util:Debug("Module enabled: " .. key)
         else
