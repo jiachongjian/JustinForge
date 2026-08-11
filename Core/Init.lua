@@ -36,21 +36,21 @@ local defaults = {
         mapCenter       = { enabled = true },  -- 功能2：地图窗口居中
         -- 功能3：商人窗口扩展（columns 为物品显示列数，范围 2-5）
         merchantExpand  = { enabled = true, columns = 4 },
-        lustMusic       = { enabled = true },  -- 功能4：嗜血音乐循环
+        lustMusic       = { enabled = true },  -- 功能4：嗜血音效
         druidFlightForm = { enabled = true },  -- 功能5：德鲁伊自动取消旅行形态
         chatHideLearn   = { enabled = true },  -- 功能6：隐藏学习/遗忘消息
         macroEnhance    = { enabled = true },  -- 功能7：宏界面增强
-        -- 功能8：聊天频道快捷栏（posX/posY 为相对屏幕中心的偏移，默认左下角附近）
+        -- 功能8：聊天频道条（posX/posY 为相对屏幕中心的偏移，默认左下角附近）
         chatChannelBar  = { enabled = true,
             posX = 46 - math.floor(screenWidth / 2), posY = 207 - math.floor(screenHeight / 2) },
         -- 功能9：人物属性面板（posX/posY 为相对屏幕中心的偏移，默认屏幕左侧中部）
         characterStats  = { enabled = true, posX = 20 - math.floor(screenWidth / 2), posY = 0 },
-        -- 功能10：虫洞抽屉（宏由玩家手动创建，内容为 /click JFDrawerBtn1）
-        drawerMacro     = { enabled = true },
+        -- 功能10：传送抽屉（宏由玩家手动创建，内容为 /click JFDrawerBtn1）
+        teleportMacro   = { enabled = true },
         -- 功能11：鼠标提示大秘境信息（评分/钥石/各副本最佳成绩）
         mythicPlusTooltip = { enabled = true },
         hideCrafter     = { enabled = true },  -- 功能12：隐藏制造业制造者
-        quickFocus      = { enabled = true },  -- 功能13：Shift+右键快速焦点
+        quickFocus      = { enabled = true },  -- 功能13：快速设置焦点目标
     },
 }
 

@@ -3,7 +3,8 @@
 -- ============================================================
 -- 职责：使用魔兽原生 Settings API 注册插件设置分类
 --   1. 在「游戏设置 - 插件」中创建 AddonJustin 独立页面
---   2. 遍历模块注册表，为每个模块生成一个原生 Checkbox
+--   2. 按 CATEGORY_LAYOUT 分组表排序，为每个模块生成一个原生
+--      Checkbox，分组前插入分组标题
 --   3. 模块若在注册信息中声明了 options（如坐标滑条），
 --      自动生成对应的原生控件并绑定到同一 DB 表
 --   4. 控件状态与 SavedVariables 双向绑定
@@ -46,6 +47,27 @@ local addonName, ns = ...
 ns.Config = {}
 
 -- ------------------------------------------------------------
+-- 设置面板的分组与排序表
+-- ------------------------------------------------------------
+-- 面板按此表从上到下依次渲染：
+--   nameKey 本地化键，用作分组标题（多模块分组必填）；
+--           单模块分组可省略，直接使用模块名作为标题
+--   keys    该分组内的模块 key，按列表顺序显示
+-- 未列入此表的新注册模块会自动追加到面板末尾（各自带模块名标题），
+-- 因此新增模块不修改本表也能出现在设置面板中
+local CATEGORY_LAYOUT = {
+    { nameKey = "Category_General", keys = {
+        "macroEnhance", "teleportMacro", "mapCenter", "quickFocus",
+        "hideCrafter", "guildCloak", "chatHideLearn", "druidFlightForm",
+    } },
+    { keys = { "merchantExpand" } },
+    { keys = { "characterStats" } },
+    { keys = { "chatChannelBar" } },
+    { keys = { "mythicPlusTooltip" } },
+    { keys = { "lustMusic" } },
+}
+
+-- ------------------------------------------------------------
 -- RegisterModuleCheckbox: 为模块生成启用/禁用 Checkbox
 -- ------------------------------------------------------------
 -- 绑定 DB.profile[mod.key].enabled，变化时即时启用/禁用模块
@@ -72,17 +94,17 @@ local function RegisterModuleCheckbox(category, mod, dbEntry)
 end
 
 -- ------------------------------------------------------------
--- RegisterSectionHeader: 在模块控件前插入分组标题
+-- RegisterSectionHeader: 插入一个分组标题
 -- ------------------------------------------------------------
 -- 12.0 使用全局工厂 CreateSettingsListSectionHeaderInitializer；
 -- 保留旧 API 名作为回退。工厂不可用时静默跳过（标题仅为视觉分组，
 -- 不影响功能）。任何异常由调用方的 pcall 捕获
-local function RegisterSectionHeader(category, mod)
+local function RegisterSectionHeader(category, title)
     local initializer
     if CreateSettingsListSectionHeaderInitializer then
-        initializer = CreateSettingsListSectionHeaderInitializer(mod.name)
+        initializer = CreateSettingsListSectionHeaderInitializer(title)
     elseif Settings.CreateSectionHeaderInitializer then
-        initializer = Settings.CreateSectionHeaderInitializer(mod.name)
+        initializer = Settings.CreateSectionHeaderInitializer(title)
     else
         return
     end
@@ -217,11 +239,16 @@ function ns.Config:Init()
         return
     end
 
-    -- ---- 阶段2：逐模块注册控件（pcall 隔离，互不影响） ----
+    -- ---- 阶段2：按分组表逐模块注册控件（pcall 隔离，互不影响） ----
+    local byKey = {}
     for _, mod in ipairs(ns.Module:GetAll()) do
-        -- 每个模块：分组标题 + 启用勾选框
+        byKey[mod.key] = mod
+    end
+    local consumed = {}
+
+    -- 注册单个模块的控件：启用勾选框 + 附加设置项（逐项 pcall 隔离）
+    local function RegisterModuleControls(mod)
         local modOk, modErr = pcall(function()
-            RegisterSectionHeader(category, mod)
             local dbEntry = ns.db.profile[mod.key]
             RegisterModuleCheckbox(category, mod, dbEntry)
         end)
@@ -239,6 +266,39 @@ function ns.Config:Init()
                         mod.key .. "." .. (opt.key or "?"), tostring(optErr)))
                 end
             end
+        end
+    end
+
+    -- 按分组表渲染：分组标题 + 组内模块控件
+    for _, group in ipairs(CATEGORY_LAYOUT) do
+        -- 分组标题：多模块分组用本地化分类名，单模块分组直接用模块名
+        local title
+        if group.nameKey then
+            title = ns.L[group.nameKey]
+        else
+            local first = byKey[group.keys[1]]
+            title = first and first.name
+        end
+        -- 标题仅为视觉分组，注册失败（如工厂 API 变动）不影响后续控件
+        if title then
+            pcall(RegisterSectionHeader, category, title)
+        end
+
+        for _, key in ipairs(group.keys) do
+            local mod = byKey[key]
+            if mod then
+                consumed[key] = true
+                RegisterModuleControls(mod)
+            end
+        end
+    end
+
+    -- 未列入分组表的新模块追加到末尾（各自带模块名标题），
+    -- 保证新增模块不修改分组表也能出现在设置面板中
+    for _, mod in ipairs(ns.Module:GetAll()) do
+        if not consumed[mod.key] then
+            pcall(RegisterSectionHeader, category, mod.name)
+            RegisterModuleControls(mod)
         end
     end
 end

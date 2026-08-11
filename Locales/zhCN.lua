@@ -18,6 +18,10 @@ local L = ns.L
 L["AddonTitle"] = "AddonJustin"
 L["AddonDesc"] = "一系列独立的实用功能，可单独启用或禁用。"
 
+-- ---- 设置面板分组标题 ----
+-- 多模块分组的标题（单模块分组直接使用模块名，无需在此定义）
+L["Category_General"] = "通用功能"
+
 -- ---- 异常提示字符串 ----
 -- 由 Core 中的 pcall 保护逻辑调用（Module.lua / Config.lua / Init.lua）
 -- 注意：Core\Init.lua 与 Core\Util.lua 加载早于本文件，但这些字符串仅在
@@ -52,8 +56,8 @@ L["MerchantExpand_Desc"] = "将商人窗口加宽为多列布局（列数可调�
 L["MerchantExpand_Columns"] = "物品显示列数"
 L["MerchantExpand_ColumnsTip"] = "商人窗口每行显示的物品列数（2-5）。商人页每页为 列数×5 个物品，回购页为 列数×6 个。"
 
--- 模块4：嗜血音乐循环
-L["LustMusic_Name"] = "嗜血音乐循环"
+-- 模块4：嗜血音效
+L["LustMusic_Name"] = "嗜血音效"
 L["LustMusic_Desc"] = "自身获得嗜血/英勇/时间扭曲等增益期间，循环播放 lust.ogg，增益消失后自动停止。队友开嗜血但你未获得增益时会聊天提示。需自行将 lust.ogg 放入插件目录（Interface\\AddOns\\JustinForge\\lust.ogg）或游戏 Interface 目录根部，并完全重启游戏。"
 L["LustMusic_MissedLust"] = "检测到队友开启了嗜血/英勇，但你未获得增益效果。"
 L["LustMusic_Play"] = "测试音乐"
@@ -77,8 +81,8 @@ L["MacroEnhance_Name"] = "宏界面增强"
 L["MacroEnhance_Desc"] = "加高宏界面（每页 6 列 × 5 行共 30 个宏、编辑框更高，宽度不变），并在图标选择弹窗中增加搜索框，支持按法术名称、图标文件名或图标 ID 过滤。"
 L["MacroEnhance_SearchHint"] = "搜索法术/图标ID"
 
--- 模块8：聊天频道快捷栏
-L["ChatChannelBar_Name"] = "聊天频道快捷栏"
+-- 模块8：聊天频道条
+L["ChatChannelBar_Name"] = "聊天频道条"
 L["ChatChannelBar_Desc"] = "在屏幕上显示一排频道按钮（说/喊/队/会/副/团/世/骰/确/倒），左键点击切换到对应聊天频道或执行指令；右键点击「世」可加入/退出大脚世界频道。通过下方坐标滑条调整位置（屏幕中心为原点）。"
 L["ChatChannelBar_PosX"] = "快捷栏水平位置 (X)"
 L["ChatChannelBar_PosY"] = "快捷栏垂直位置 (Y)"
@@ -120,10 +124,10 @@ L["MPT_Keystone"] = "钥石"
 L["HideCrafter_Name"] = "隐藏制造业制造者"
 L["HideCrafter_Desc"] = "在装备鼠标提示中隐藏制造业装备上的绿色「<制造者名字>」署名行。"
 
--- 模块13：Shift+右键快速焦点
-L["QuickFocus_Name"] = "Shift+右键快速焦点"
+-- 模块13：快速设置焦点目标
+L["QuickFocus_Name"] = "快速设置焦点目标"
 L["QuickFocus_Desc"] = "按住 Shift 并用右键点击场景中的单位、默认头像/小队/团队框体或 EllesmereUI 单位框体，将其设为焦点。禁用后自动还原框体属性。不支持姓名板。"
 
--- 模块10：虫洞抽屉宏
-L["DrawerMacro_Name"] = "虫洞抽屉宏"
-L["DrawerMacro_Desc"] = "手动创建一个宏，内容填入固定命令 /click JFDrawerBtn1（仅一行，不受宏数量与 255 字符限制影响），拖到动作条点击后会在鼠标位置展开原生风格的抽屉窗口，网格展示全部虫洞传送玩具（诺森德至奎尔萨拉斯，最多支持 30 个位置），点击即用并自动收起。未学会的玩具显示为灰色。禁用模块后宏将失效。"
+-- 模块10：传送抽屉宏
+L["TeleportMacro_Name"] = "传送抽屉宏"
+L["TeleportMacro_Desc"] = "手动创建一个宏，内容填入固定命令 /click JFDrawerBtn1（仅一行，不受宏数量与 255 字符限制影响），拖到动作条点击后会在鼠标位置展开原生风格的抽屉窗口，网格展示全部传送玩具与物品（最多支持 30 个位置），点击即用并自动收起。未学会的玩具显示为灰色。禁用模块后宏将失效。"
