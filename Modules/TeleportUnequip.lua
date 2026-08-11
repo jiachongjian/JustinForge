@@ -1,9 +1,10 @@
 -- ============================================================
--- JustinForge 模块1: 公会披风自动还原 (GuildCloak.lua)
+-- JustinForge 模块1: 自动脱下传送装备 (TeleportUnequip.lua)
 -- ============================================================
 -- 功能描述：
---   玩家使用公会阵营披风传送后，自动将背槽装备换回传送前的
---   物品，避免披风长时间占用背槽装备位。
+--   玩家使用传送装备（公会披风、肯瑞托戒指等）传送后，
+--   自动将对应槽位换回传送前的物品，避免传送装备长时间
+--   占用装备位。
 --
 -- 实现原理（触发时机借鉴自 SanluliUtils 的 UnequipTeleportEquipment）：
 --   1. 平时用 PLAYER_EQUIPMENT_CHANGED 追踪注册的槽位，
@@ -12,16 +13,16 @@
 --   2. 两条触发路径覆盖全部传送场景：
 --      a. PLAYER_ENTERING_WORLD：跨地图传送（有读条画面）落地后触发
 --      b. BAG_UPDATE_COOLDOWN：同地图传送无读条画面，不触发
---         PLAYER_ENTERING_WORLD，改为通过披风冷却「刚开始」判定使用
---         （穿上装备触发的冷却仅 30 秒，使用冷却为 2/4/8 小时，可区分）
+--         PLAYER_ENTERING_WORLD，改为通过装备冷却「刚开始」判定使用
+--         （穿上装备触发的冷却仅 30 秒，使用冷却为 30min～8h，可区分）
 --   3. 换回执行带重试：落地瞬间背包数据可能尚未复制到客户端
 --      （GetItemCount 短暂返回 0），间隔重试数次，仅最终失败才提示
 --   4. 若处于战斗锁定（战斗中 EquipItemByName 会失败），
---      等待 PLAYER_REGEN_ENABLED 脱战后再补执行
+--      等待 PLAYER_REGEN_ENABLED 脱战后补执行
 --   5. 换回成功 / 无还原目标时在聊天框给出提示
 --
 -- 为何不在装备瞬间换回：
---   公会披风需先装备再手动使用才能触发传送，若一穿上就换回，
+--   传送装备需先装备再手动使用才能触发传送，若一穿上就换回，
 --   玩家可能来不及使用。改为「传送落地后检测」才不会干扰传送流程。
 --
 -- 防循环说明：
@@ -35,19 +36,50 @@ local addonName, ns = ...
 local L = ns.L
 local Util = ns.Util
 
--- 背槽装备位编号（WoW 常量 INVSLOT_BACK = 15）
--- 使用 or 15 作为兜底，防止常量未定义
-local INVSLOT_BACK = INVSLOT_BACK or 15
+-- 装备位编号（WoW 常量，使用 or 兜底防止常量未定义）
+local INVSLOT_FINGER1 = INVSLOT_FINGER1 or 11
+local INVSLOT_FINGER2 = INVSLOT_FINGER2 or 12
+local INVSLOT_BACK    = INVSLOT_BACK    or 15
 
 -- ============================================================
 -- 传送装备表（按槽位组织）
 -- ============================================================
 -- 结构：TELEPORT_EQUIPMENT_SLOTS[槽位][物品ID] = true
--- 当前预置6个公会披风ID（对应不同阵营/版本）
--- 如需扩展其他传送装备（如肯瑞托戒指），在此添加对应槽位表即可：
---   [11] = { [40585] = true, ... },  -- 手指1
---   [12] = { [40585] = true, ... },  -- 手指2
+-- 手指1与手指2共用同一张表（同一传送戒指可能戴在任一手指）
 local TELEPORT_EQUIPMENT_SLOTS = {
+    [INVSLOT_FINGER1] = {
+        -- 达拉然(晶歌森林) 30min
+        [40585] = true,  -- 肯瑞托徽记
+        [40586] = true,  -- 肯瑞托指环
+        [44934] = true,  -- 肯瑞托指箍
+        [44935] = true,  -- 肯瑞托戒指
+        [45688] = true,  -- 肯瑞托铭文指环
+        [45689] = true,  -- 肯瑞托铭文指箍
+        [45690] = true,  -- 肯瑞托铭文戒指
+        [45691] = true,  -- 肯瑞托铭文徽记
+        [48954] = true,  -- 肯瑞托铭刻指环
+        [48955] = true,  -- 肯瑞托铭刻指箍
+        [48956] = true,  -- 肯瑞托铭刻戒指
+        [48957] = true,  -- 肯瑞托铭刻徽记
+        [51557] = true,  -- 肯瑞托符文徽记
+        [51558] = true,  -- 肯瑞托符文戒指
+        [51559] = true,  -- 肯瑞托符文佩戒
+        [51560] = true,  -- 肯瑞托符文指环
+        -- 达拉然(破碎群岛) 30min
+        [139599] = true, -- 肯瑞托强化指环
+        -- 比兹莫搏击俱乐部 联盟 1h
+        [95051] = true,  -- 黄铜指虎
+        [118907] = true, -- 格斗士的重击指环
+        [144391] = true, -- 拳手的重击指环
+        -- 比兹莫搏击俱乐部 部落 1h
+        [95050] = true,  -- 黄铜指虎
+        [118908] = true, -- 格斗士的重击指环
+        [144392] = true, -- 拳手的重击指环
+        -- 其他
+        [142469] = true, -- 魔导大师的紫罗兰印戒 (卡拉赞, 4h)
+        [166559] = true, -- 指挥官的战斗玺戒 (达萨罗, 30min)
+        [166560] = true, -- 船长的指挥玺戒 (伯拉勒斯, 30min)
+    },
     [INVSLOT_BACK] = {
         [65360] = true, -- 协同披风 (暴风城, 2h)
         [65274] = true, -- 协同披风 (奥格瑞玛, 2h)
@@ -57,6 +89,8 @@ local TELEPORT_EQUIPMENT_SLOTS = {
         [63207] = true, -- 协和披风 (奥格瑞玛, 4h)
     },
 }
+-- 手指2与手指1共用同一张表
+TELEPORT_EQUIPMENT_SLOTS[INVSLOT_FINGER2] = TELEPORT_EQUIPMENT_SLOTS[INVSLOT_FINGER1]
 
 -- ============================================================
 -- 模块注册
@@ -64,9 +98,10 @@ local TELEPORT_EQUIPMENT_SLOTS = {
 -- 注册到模块框架，key 必须与 Init.lua defaults 表中的键名一致
 -- name/description 引用本地化字符串，显示在设置面板
 local module = ns.Module:Register({
-    key            = "guildCloak",
-    name           = L["GuildCloak_Name"],
-    description    = L["GuildCloak_Desc"],
+    key            = "teleportUnequip",
+    name           = L["TeleportUnequip_Name"],
+    description    = L["TeleportUnequip_Desc"],
+    tooltip        = L["TeleportUnequip_Tooltip"],
     defaultEnabled = true,
 })
 
@@ -82,22 +117,23 @@ local checkToken = 0
 local restoreAttempts = 0
 local MAX_RESTORE_ATTEMPTS = 4    -- 首次尝试 + 3 次重试
 local RESTORE_RETRY_DELAY = 1     -- 重试间隔（秒）
-local USE_DETECT_DELAY = 1.5      -- 检测到披风使用后延迟换回（等待传送完成）
--- 「使用」冷却判定阈值：装备披风触发的冷却仅 30 秒，
--- 使用冷却为 2/4/8 小时，超过该阈值即视为真正使用了传送
+local USE_DETECT_DELAY = 1.5      -- 检测到使用后延迟换回（等待传送完成）
+-- 「使用」冷却判定阈值：装备触发的冷却仅 30 秒，
+-- 使用冷却为 30 分钟～8 小时（戒指 30min/1h/4h，披风 2/4/8h），
+-- 超过该阈值即视为真正使用了传送
 local USE_COOLDOWN_THRESHOLD = 60
 
 -- ------------------------------------------------------------
 -- GetRestoreStore: 获取当前角色的「还原目标」持久化存储表
 -- ------------------------------------------------------------
 -- 还原目标保存在 SavedVariables：
---   ns.db.profile.guildCloak.previousItems[角色名-服务器][槽位] = 装备链接
+--   ns.db.profile.teleportUnequip.previousItems[角色名-服务器][槽位] = 装备链接
 -- 按角色分键，避免多角色共用配置时互相污染；
 -- 持久化后 /reload 或重新登录不再丢失还原目标。
 -- ns.db 在 ADDON_LOADED 后才挂载，本模块的事件与 OnEnable 均晚于
 -- 该时机触发，此处返回 nil 仅为防御异常时序
 local function GetRestoreStore()
-    local db = ns.db and ns.db.profile and ns.db.profile.guildCloak
+    local db = ns.db and ns.db.profile and ns.db.profile.teleportUnequip
     if not db then return nil end
     if not db.previousItems then
         db.previousItems = {}
@@ -124,7 +160,7 @@ end
 -- ------------------------------------------------------------
 -- TryRestoreTeleportEquipment: 扫描并换回传送装备
 -- ------------------------------------------------------------
--- 返回 true 表示「仍穿着披风但暂时无法换回，需要稍后重试」。
+-- 返回 true 表示「仍穿着传送装备但暂时无法换回，需要稍后重试」。
 -- 传送落地瞬间背包数据可能尚未复制到客户端，GetItemCount 会
 -- 短暂返回 0，此时静默等待重试而非误报「原装备不在背包」；
 -- 只有最后一次尝试仍失败时才给出对应提示。
@@ -139,17 +175,17 @@ local function TryRestoreTeleportEquipment()
             if previousLink and GetItemCount(previousLink) > 0 then
                 -- 换回传送前的装备
                 -- 换回触发的装备事件会把还原目标更新为同一件装备，幂等无循环
-                EquipItemByName(previousLink, slot)
-                Util:Print(L["GuildCloak_Restored"]:format(previousLink))
+                C_Item.EquipItemByName(previousLink, slot)
+                Util:Print(L["TeleportUnequip_Restored"]:format(previousLink))
             elseif previousLink and not isFinalAttempt then
                 -- 有还原记录但背包数据未就绪，稍后重试，暂不提示
                 needsRetry = true
             elseif previousLink then
                 -- 有还原记录但原装备已不在背包（被出售/摧毁/存入银行），无法换回
-                Util:Print(L["GuildCloak_ItemMissing"]:format(currentLink or "?", previousLink))
+                Util:Print(L["TeleportUnequip_ItemMissing"]:format(currentLink or "?", previousLink))
             else
-                -- 没有还原目标（该角色从未记录过其他背部装备），仅提示不动作
-                Util:Print(L["GuildCloak_NoPrevious"]:format(currentLink or "?"))
+                -- 没有还原目标（该角色从未记录过其他装备），仅提示不动作
+                Util:Print(L["TeleportUnequip_NoPrevious"]:format(currentLink or "?"))
             end
         end
     end
@@ -191,14 +227,14 @@ local function ScheduleRestoreCheck(delay)
 end
 
 -- ------------------------------------------------------------
--- CheckCloakUsed: 检测披风是否「刚被使用」
+-- CheckEquipmentUsed: 检测传送装备是否「刚被使用」
 -- ------------------------------------------------------------
 -- 同地图传送没有读条画面，PLAYER_ENTERING_WORLD 不会触发。
--- 使用披风后其冷却变为 2/4/8 小时，而单纯穿上装备触发的
--- 冷却仅 30 秒，据此可区分；再通过「剩余时长接近总时长」
--- 确认冷却刚开始，排除穿着冷却中的披风时其他物品冷却更新
--- 引发的同一事件。
-local function CheckCloakUsed()
+-- 使用传送装备后其冷却为 30min～8h（戒指 30min/1h/4h，披风 2/4/8h），
+-- 而单纯穿上装备触发的冷却仅 30 秒，据此可区分；再通过
+-- 「剩余时长接近总时长」确认冷却刚开始，排除穿着冷却中的装备时
+-- 其他物品冷却更新引发的同一事件。
+local function CheckEquipmentUsed()
     for slot in pairs(TELEPORT_EQUIPMENT_SLOTS) do
         if IsTeleportEquipment(slot) then
             local start, duration = GetInventoryItemCooldown("player", slot)
@@ -234,8 +270,8 @@ local function OnEvent(_, event, arg1, arg2)
         -- 传送/登录/reload 落地后检测（重试链覆盖背包数据未就绪的窗口）
         ScheduleRestoreCheck(0)
     elseif event == "BAG_UPDATE_COOLDOWN" then
-        -- 同地图传送无读条画面，通过披风冷却刚开始判定「刚使用」
-        CheckCloakUsed()
+        -- 同地图传送无读条画面，通过装备冷却刚开始判定「刚使用」
+        CheckEquipmentUsed()
     elseif event == "PLAYER_REGEN_ENABLED" then
         -- 脱战后补执行因战斗锁定而推迟的换回
         if waitingCombatLockdown then
@@ -251,8 +287,8 @@ end
 -- 1. 创建事件 Frame（懒创建，首次启用时才创建）
 -- 2. 注册装备变更 / 进入世界 / 脱战事件
 -- 3. 刷新还原目标：记录当前各槽位的非传送装备
---    （若启用时正穿着披风则跳过记录，保留已持久化的还原目标，
---    不会把披风误记为还原目标）
+--    （若启用时正穿着传送装备则跳过记录，保留已持久化的还原目标，
+--    不会把传送装备误记为还原目标）
 function module:OnEnable()
     if not eventFrame then
         eventFrame = CreateFrame("Frame")

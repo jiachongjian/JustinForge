@@ -23,7 +23,7 @@ Core\Init.lua
 Core\Util.lua
 Locales\zhCN.lua
 Core\Module.lua
-Modules\GuildCloak.lua
+Modules\TeleportUnequip.lua
 Modules\MapCenter.lua
 Modules\MerchantExpand.lua
 Modules\LustMusic.lua

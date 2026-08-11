@@ -39,12 +39,13 @@ L["Error_Init"] = "插件初始化过程中发生异常：%s"
 --   _Name  模块名称（显示在设置面板的 Checkbox 标签）
 --   _Desc  模块描述（显示在 Checkbox 下方，说明功能作用）
 
--- 模块1：公会披风自动还原
-L["GuildCloak_Name"] = "公会披风自动还原"
-L["GuildCloak_Desc"] = "使用公会阵营披风传送后，自动将背部装备换回传送前的物品。"
-L["GuildCloak_Restored"] = "已自动换回传送前的装备：%s"
-L["GuildCloak_NoPrevious"] = "检测到仍穿着公会披风 %s，但没有可还原的装备记录。"
-L["GuildCloak_ItemMissing"] = "检测到仍穿着公会披风 %s，但原装备 %s 不在背包中，无法自动换回。"
+-- 模块1：自动脱下传送装备
+L["TeleportUnequip_Name"] = "自动脱下传送装备"
+L["TeleportUnequip_Desc"] = "传送后自动脱下身上的传送装备（公会披风、肯瑞托戒指等），换回传送前的装备。"
+L["TeleportUnequip_Tooltip"] = "传送后自动脱下身上的传送装备，换回传送前的装备。\n\n支持的传送装备：\n\n披风槽（公会披风）：\n- 协同披风（暴风城/奥格瑞玛, 2h）\n- 协和披风（暴风城/奥格瑞玛, 4h）\n- 协作披风（暴风城/奥格瑞玛, 8h）\n\n手指槽（戒指）：\n- 肯瑞托戒指（达拉然·晶歌森林, 30min）\n- 肯瑞托强化指环（达拉然·破碎群岛, 30min）\n- 搏击俱乐部戒指（1h）\n- 魔导大师的紫罗兰印戒（卡拉赞, 4h）\n- 指挥官的战斗玺戒 / 船长的指挥玺戒（达萨罗/伯拉勒斯, 30min）"
+L["TeleportUnequip_Restored"] = "已自动换回传送前的装备：%s"
+L["TeleportUnequip_NoPrevious"] = "检测到仍穿着传送装备 %s，但没有可还原的装备记录。"
+L["TeleportUnequip_ItemMissing"] = "检测到仍穿着传送装备 %s，但原装备 %s 不在背包中，无法自动换回。"
 
 -- 模块2：地图窗口居中
 L["MapCenter_Name"] = "地图窗口居中"

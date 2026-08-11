@@ -32,7 +32,7 @@ local screenWidth = math.floor(UIParent:GetWidth() or 1920)
 local screenHeight = math.floor(UIParent:GetHeight() or 1080)
 local defaults = {
     profile = {
-        guildCloak      = { enabled = true },  -- 功能1：公会披风自动还原
+        teleportUnequip = { enabled = true },  -- 功能1：自动脱下传送装备
         mapCenter       = { enabled = true },  -- 功能2：地图窗口居中
         -- 功能3：商人窗口扩展（columns 为物品显示列数，范围 2-5）
         merchantExpand  = { enabled = true, columns = 4 },

@@ -58,7 +58,7 @@ ns.Config = {}
 local CATEGORY_LAYOUT = {
     { nameKey = "Category_General", keys = {
         "macroEnhance", "teleportMacro", "mapCenter", "quickFocus",
-        "hideCrafter", "guildCloak", "chatHideLearn", "druidFlightForm",
+        "hideCrafter", "teleportUnequip", "chatHideLearn", "druidFlightForm",
     } },
     { keys = { "merchantExpand" } },
     { keys = { "characterStats" } },
@@ -81,7 +81,8 @@ local function RegisterModuleCheckbox(category, mod, dbEntry)
         mod.name,
         mod.defaultEnabled and true or false
     )
-    Settings.CreateCheckbox(category, setting, mod.description)
+    -- tooltip 优先使用模块专属 tooltip（详细说明），回退到 description
+    Settings.CreateCheckbox(category, setting, mod.tooltip or mod.description)
 
     -- 勾选/取消勾选时即时响应
     setting:SetValueChangedCallback(function(_, value)
