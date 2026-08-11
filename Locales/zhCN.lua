@@ -53,9 +53,7 @@ L["MapCenter_Desc"] = "每次打开地图窗口时，自动将窗口定位到屏
 
 -- 模块3：商人窗口扩展
 L["MerchantExpand_Name"] = "商人窗口扩展"
-L["MerchantExpand_Desc"] = "将商人窗口加宽为多列布局（列数可调，每列 5 行，高度不变），并重新排列修理、出售垃圾、翻页按钮与货币栏。禁用后需重载界面以完全复原锚点。"
-L["MerchantExpand_Columns"] = "物品显示列数"
-L["MerchantExpand_ColumnsTip"] = "商人窗口显示的物品列数（2/4/6/8/10，每列 5 行）。商人页每页为 列数×5 个物品，回购页保持原版 12 个。"
+L["MerchantExpand_Desc"] = "将商人窗口加宽为固定的 4 列布局（每列 5 行，高度不变），并重新排列修理、出售垃圾、翻页按钮与货币栏。禁用后需重载界面以完全复原锚点。"
 
 -- 模块4：嗜血音效
 L["LustMusic_Name"] = "嗜血音效"
@@ -113,17 +111,21 @@ L["CS_Parry"] = "招架"
 L["CS_Block"] = "格挡"
 L["CS_MoveSpeed"] = "移速"
 
--- 模块11：鼠标提示大秘境信息
-L["MythicPlusTooltip_Name"] = "鼠标提示大秘境信息"
-L["MythicPlusTooltip_Desc"] = "鼠标指向满级玩家时，在提示框中显示其本赛季大秘境总评分、当前钥石，以及每个大秘境的最佳层数与分数（限时按剩余时间标注 +3/+2/+1，超时显示灰色）。其他玩家的钥石通过 LibKeystone 兼容协议交换，可与 BigWigs/ElvUI/WindTools 用户互通；安装 Details 时也会读取其共享数据。"
-L["MPT_Header"] = "大秘境"
-L["MPT_Score"] = "评分"
-L["MPT_Keystone"] = "钥石"
-
--- 模块14：鼠标提示团本进度
-L["RaidProgressTooltip_Name"] = "鼠标提示团本进度"
-L["RaidProgressTooltip_Desc"] = "鼠标指向满级玩家时，在提示框中显示其当前赛季团本进度（虚影尖塔/奎尔丹纳斯/梦境裂隙，按 史诗→英雄→普通→随机 显示有击杀的难度，格式 M 6/6）。自己直接读取角色统计；其他玩家通过成就对比获取，受观察距离限制，战斗中不刷新。"
-L["RPT_Header"] = "团本进度"
+-- 模块11/14：鼠标提示扩展（合并大秘境信息+团本进度+人物提示增强）
+L["TooltipEnhance_Name"] = "鼠标提示扩展"
+L["TooltipEnhance_Desc"] = "增强鼠标提示框：姓名按职业染色并隐藏头衔/显示服务器名/状态；公会行显示会阶（公会名~会阶名）；等级行隐藏\"等级\"\"玩家\"文字；职业专精按职业染色；阵营改为右上角 logo；显示 M+分数/最佳记录/物品等级(套装数/5)、各地下城限时成绩、团本进度、目标的目标。可调整标题/正文/小字三档字号。"
+L["TE_TitleFontSize"] = "标题字号"
+L["TE_TitleFontSizeTip"] = "鼠标提示标题行的字号（0 = 暴雪默认）。"
+L["TE_BodyFontSize"] = "正文字号"
+L["TE_BodyFontSizeTip"] = "鼠标提示正文行的字号（0 = 暴雪默认）。"
+L["TE_SmallFontSize"] = "小字号"
+L["TE_SmallFontSizeTip"] = "鼠标提示小字行的字号（0 = 暴雪默认）。"
+L["TE_MPScore"] = "M+分数"
+L["TE_MPBest"] = "M+最佳"
+L["TE_ItemLevel"] = "物品等级"
+L["TE_DungeonScore"] = "大秘境成绩"
+L["TE_RaidProgress"] = "团本进度"
+L["TE_TargetTarget"] = "目标的目标"
 
 -- 模块12：隐藏制造业制造者
 L["HideCrafter_Name"] = "隐藏制造业制造者"

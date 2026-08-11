@@ -2,12 +2,12 @@
 -- JustinForge 模块3: 商人窗口扩展 (MerchantExpand.lua)
 -- ============================================================
 -- 功能描述：
---   将商人窗口加宽为多列布局（列数 2/4/6/8/10 可调，每列 5 行，
---   窗口高度保持原版不变），商人页每页为 列数×5 个物品；
+--   将商人窗口加宽为固定的 4 列布局（每列 5 行，窗口高度保持原版
+--   不变），商人页每页为 4×5 = 20 个物品；
 --   并重新排列翻页按钮、修理/出售垃圾按钮、回购框与货币栏。
 --
 -- 实现逻辑（以 EnhanceQoL 插件的 Merchant 子模块为蓝本重构）：
---   1. 仅改写 MERCHANT_ITEMS_PER_PAGE 全局变量为 列数×5，
+--   1. 仅改写 MERCHANT_ITEMS_PER_PAGE 全局变量为 20（4列×5行），
 --      暴雪分页/刷新逻辑按新容量工作；BUYBACK_ITEMS_PER_PAGE
 --      保持原版 12 不动，回购页只重排前 12 个槽位并隐藏其余
 --   2. 布局单元为「10 物品块」（2 列×5 行）：块内奇数位向下堆叠、
@@ -19,8 +19,7 @@
 --        MerchantFrame_UpdateBuybackInfo   → 回购页槽位重排
 --        MerchantFrame_UpdateRepairButtons → 出售垃圾按钮位置
 --      （后置 Hook 随原生刷新逐路径触发，无需 Hook OnShow）
---   5. 窗口宽度按公式 36 + 165×列数 计算
---      （EnhanceQoL 固定 4 列 = 696，此处推广为任意偶数列）
+--   5. 窗口宽度按公式 36 + 165×4 = 696 计算（与 EnhanceQoL 一致）
 --
 -- 与旧实现的关键差异（旧实现问题根因）：
 --   - 旧实现同时改写 BUYBACK_ITEMS_PER_PAGE 并按列优先重排回购页，
@@ -50,25 +49,18 @@ local Util = ns.Util
 -- 模块注册
 -- ============================================================
 -- 注册到模块框架，key 必须与 Init.lua defaults 表中的键名一致
--- options 声明列数滑条，值绑定到 DB.profile.merchantExpand.columns
+-- 列数固定为 4（4列×5行 = 每页 20 个，与 EnhanceQoL 一致），不提供设置选项
+local COLUMNS = 4          -- 固定列数
+local MAX_ITEMS = 20       -- 按钮创建上限（4列×5行 = 20）
+
+local SUBPAGE_SIZE = 10   -- 每个布局块的物品数（2列×5行）
+
 local module = ns.Module:Register({
     key            = "merchantExpand",
     name           = L["MerchantExpand_Name"],
     description    = L["MerchantExpand_Desc"],
     defaultEnabled = true,
-    options = {
-        { type = "slider", key = "columns", name = L["MerchantExpand_Columns"],
-          min = 2, max = 10, step = 2, default = 4, tooltip = L["MerchantExpand_ColumnsTip"] },
-    },
 })
-
--- 列数取值约束：布局单元为 2 列×5 行的「10 物品块」，故列数必须为偶数
-local MIN_COLUMNS = 2
-local MAX_COLUMNS = 10
-local DEFAULT_COLUMNS = 4  -- 4列×5行 = 每页 20 个，与 EnhanceQoL 一致
-
-local SUBPAGE_SIZE = 10   -- 每个布局块的物品数（2列×5行）
-local MAX_ITEMS = MAX_COLUMNS * 5  -- 按钮创建上限（10列×5行 = 50）
 
 -- 原版每页物品数（应用扩展时从全局变量捕获，禁用时恢复）
 local originalItemsPerPage
@@ -81,25 +73,13 @@ local hooked = false
 local loaderFrame
 
 -- ------------------------------------------------------------
--- GetColumns: 读取当前配置的列数（偶数化 + 范围兜底）
--- ------------------------------------------------------------
-local function GetColumns()
-    local db = ns.db and ns.db.profile and ns.db.profile.merchantExpand
-    local cols = db and tonumber(db.columns) or DEFAULT_COLUMNS
-    cols = math.floor(cols / 2 + 0.5) * 2  -- 就近取偶数
-    if cols < MIN_COLUMNS then return MIN_COLUMNS end
-    if cols > MAX_COLUMNS then return MAX_COLUMNS end
-    return cols
-end
-
--- ------------------------------------------------------------
 -- RebuildMerchantFrame: 设置窗口宽度并补建物品按钮
 -- ------------------------------------------------------------
 -- 对应 EnhanceQoL 的 RebuildMerchantFrame：
 -- 只在容量改写后执行，保证暴雪首次按新容量刷新时按钮已就位
 local function RebuildMerchantFrame()
     if not module.enabled or not MerchantFrame then return end
-    MerchantFrame:SetWidth(36 + 165 * GetColumns())
+    MerchantFrame:SetWidth(36 + 165 * COLUMNS)
     for i = 1, _G.MERCHANT_ITEMS_PER_PAGE do
         if not _G["MerchantItem" .. i] then
             CreateFrame("Frame", "MerchantItem" .. i, MerchantFrame, "MerchantItemTemplate")
@@ -286,7 +266,7 @@ local function ApplyMerchantExpand()
     originalItemsPerPage = _G.MERCHANT_ITEMS_PER_PAGE or 10
 
     -- 扩展容量（仅商人页；回购页容量保持原版 12 不动）
-    _G.MERCHANT_ITEMS_PER_PAGE = GetColumns() * 5
+    _G.MERCHANT_ITEMS_PER_PAGE = COLUMNS * 5
 
     RebuildMerchantFrame()
     RebuildPageButtonPositions()
@@ -372,20 +352,4 @@ function module:OnDisable()
     RestoreMerchantExpand()
 end
 
--- ------------------------------------------------------------
--- OnOptionChanged: 附加设置变化回调（由 Config.lua 调用）
--- ------------------------------------------------------------
--- 列数变化：改容量 → 补建按钮/设宽 → 重排；窗口打开时触发
--- 一次暴雪原生刷新，让物品数据按新容量重新填充
-function module:OnOptionChanged(key, value)
-    if key ~= "columns" then return end
-    if not applied or not MerchantFrame then return end
-
-    _G.MERCHANT_ITEMS_PER_PAGE = GetColumns() * 5
-    RebuildMerchantFrame()
-    UpdateSlotPositions()
-    UpdateBuyBackSlotPositions()
-    if MerchantFrame:IsShown() and MerchantFrame_Update then
-        MerchantFrame_Update()
-    end
-end
+-- 无运行时可调设置，故不需要 OnOptionChanged 处理

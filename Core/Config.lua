@@ -63,8 +63,7 @@ local CATEGORY_LAYOUT = {
     } },
     { keys = { "characterStats" } },
     { keys = { "chatChannelBar" } },
-    { keys = { "mythicPlusTooltip" } },
-    { keys = { "raidProgressTooltip" } },
+    { keys = { "tooltipEnhance" } },
     { keys = { "lustMusic" } },
 }
 
@@ -209,6 +208,39 @@ local function RegisterModuleOption(category, mod, dbEntry, opt)
 end
 
 -- ------------------------------------------------------------
+-- DisableDefaultResetButton: 去掉分类右下角原生「默认设置」按钮
+-- ------------------------------------------------------------
+-- 原生 Settings 分类创建时会自动生成一个「默认设置」(Restore Defaults)
+-- 按钮，其显示与否由 HasRestorableSettings / UpdateDefaultButtonState 决定。
+-- 本插件设置由自管理的 SavedVariables 持久化，并未接入 Settings 的
+-- 默认值恢复机制，该按钮点击后无实际作用且会造成困惑，故直接禁用。
+--
+-- 三重保险（全部 pcall 隔离，任一失败仅静默跳过，不影响设置面板）：
+--   1. 覆写 HasRestorableSettings 永远返回 false → 系统判定无需恢复，
+--      按钮不会因存在可恢复设置而被显示
+--   2. hooksecurefunc UpdateDefaultButtonState → 即使后续状态刷新
+--      触发展示，也强制隐藏按钮
+--   3. 若按钮已创建则直接隐藏
+local function DisableDefaultResetButton(category)
+    if type(category.HasRestorableSettings) == "function" then
+        category.HasRestorableSettings = function(self)
+            return false
+        end
+    end
+    if type(category.UpdateDefaultButtonState) == "function" then
+        hooksecurefunc(category, "UpdateDefaultButtonState", function(self)
+            local btn = self.RestoreDefaultsButton
+            if btn then
+                btn:SetShown(false)
+            end
+        end)
+    end
+    if category.RestoreDefaultsButton then
+        category.RestoreDefaultsButton:SetShown(false)
+    end
+end
+
+-- ------------------------------------------------------------
 -- Init: 初始化设置面板
 -- ------------------------------------------------------------
 -- 在 ADDON_LOADED 后由 Init.lua 调用
@@ -235,6 +267,10 @@ function ns.Config:Init()
         -- 立即注册到插件设置列表：即使后续控件注册全部失败，
         -- 面板入口依然可见（页面可能为空，但错误提示会指出原因）
         Settings.RegisterAddOnCategory(category)
+
+        -- 去掉原生「默认设置」按钮（本插件设置不接入 Settings 默认值
+        -- 恢复机制，该按钮无实际作用）。独立 pcall 隔离，失败不影响主流程
+        pcall(DisableDefaultResetButton, category)
     end)
     if not ok then
         ns.Util:Error((ns.L["Error_ConfigInit"]):format(tostring(err)))

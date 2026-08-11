@@ -2,7 +2,7 @@
 -- JustinForge 模块8: 聊天频道条 (ChatChannelBar.lua)
 -- ============================================================
 -- 功能描述：
---   在聊天框附近提供一排单字按钮（说/喊/队/会/副/团/世/骰/确/倒），
+--   在聊天框附近提供一排单字按钮（说/喊/队/副/团/会/世/骰/确/倒），
 --   左键点击聊天类按钮直接以对应频道激活聊天输入框，点击命令类按钮
 --   直接执行斜杠指令（/roll、/rc、/cd 10）。
 --   「世」按钮（大脚世界频道）支持右键：未加入时自动加入频道，
@@ -61,7 +61,7 @@ local module = ns.Module:Register({
     },
 })
 
--- 频道定义（固定列表，世界频道位于「团」之后）：
+-- 频道定义（固定列表，世界频道位于「会」之后）：
 --   chat  普通聊天频道，点击后以该频道打开输入框
 --   named 具名频道（世界频道），左键先解析频道号再打开输入框；
 --         右键在未加入时加入频道、已加入时退出频道
@@ -71,9 +71,9 @@ local CHANNELS = {
     { name = "说", cmd = "/s",                chat = true,  r = 1,    g = 1,    b = 1 },
     { name = "喊", cmd = "/y",                chat = true,  r = 1,    g = 0.25, b = 0.25 },
     { name = "队", cmd = "/p",                chat = true,  r = 0.67, g = 0.67, b = 1 },
-    { name = "会", cmd = "/g",                chat = true,  r = 0.25, g = 1,    b = 0.25 },
     { name = "副", cmd = "/i",                chat = true,  r = 1,    g = 0.5,  b = 0 },
     { name = "团", cmd = "/raid",             chat = true,  r = 1,    g = 0.5,  b = 0 },
+    { name = "会", cmd = "/g",                chat = true,  r = 0.25, g = 1,    b = 0.25 },
     { name = "世", cmd = WORLD_CHANNEL_NAME,  named = true, r = 1,    g = 0.5,  b = 0.5 },
     { name = "骰", cmd = "/roll",             slash = true, r = 1,    g = 1,    b = 0 },
     { name = "确", cmd = "/rc",               slash = true, r = 0,    g = 1,    b = 1 },
@@ -212,6 +212,7 @@ local function CreateBarFrame()
         local text = btn:CreateFontString(nil, "OVERLAY")
         text:SetPoint("CENTER")
         text:SetJustifyH("CENTER")
+        text:SetFont(STANDARD_TEXT_FONT, math.floor(DEFAULT_BUTTON_SIZE * FONT_RATIO + 0.5), "OUTLINE")
         text:SetText(channel.name)
         text:SetTextColor(channel.r, channel.g, channel.b)
         btn.text = text

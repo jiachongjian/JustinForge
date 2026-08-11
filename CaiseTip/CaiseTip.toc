@@ -1,0 +1,34 @@
+## Interface: 120007, 120100
+## Title: |cff00eeffCaise|rTip
+## Notes: A lightweight tooltip beautifier and enhancement addon.
+## Notes-zhCN:简单风格的鼠标提示美化与增强插件。
+## Author: Caise
+## Version: 12.007
+## SavedVariables: CaiseTipDB
+
+Core\Init.lua
+Core\Constants.lua
+Core\Locales.lua
+Core\Config.lua
+Core\Utils.lua
+
+Tooltip\Skin.lua
+Tooltip\Anchor.lua
+Tooltip\Render.lua
+
+Modules\UnitNameInfo.lua
+Modules\GuildInfo.lua
+Modules\UnitInfo.lua
+Modules\SpecInfo.lua
+Modules\HealthBar.lua
+Modules\RefreshState.lua
+
+Features\ID.lua
+Features\ItemLevel.lua
+Features\Hyperlink.lua
+Features\TargetInfo.lua
+Features\MountInfo.lua
+Features\MythicScore.lua
+Features\Iteminfo.lua
+
+
