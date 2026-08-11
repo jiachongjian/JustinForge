@@ -11,9 +11,8 @@
 --     5. 移速（实时移动速度百分比，100% = 基础跑步速度，每秒刷新）
 --   面板左上角为锚点、向右下扩展，不支持拖动，
 --   位置由设置面板中的坐标滑条决定（屏幕中心为原点）。
---   左右两列布局：名称列与数值列均左对齐，数值列锚定名称列右侧
---   并保持固定间距；数值与属性名称同色（名称按属性类型着色，
---   主属性为当前职业色）。字号/描边（无/细/粗）/行间距可在设置面板中调整。
+--   每行格式为「名称  数值」：名称与数值同色、间隔两个空格（按属性类型着色，
+--   主属性为当前职业色）。文字固定细描边，字号/行间距可在设置面板中调整。
 --
 -- 实现说明（数据计算/条件层以 ExwindTools 的 PStat_* 采集逻辑为蓝本从底层重构）：
 --   - 主属性：专精 ID 查表确定主属性类型（避免数值比较，对 12.0 secret value
@@ -53,20 +52,12 @@ local module = ns.Module:Register({
         { type = "slider", key = "posX", name = L["CharacterStats_PosX"], min = -halfWidth,  max = halfWidth,  step = 1, default = 20 - halfWidth },
         { type = "slider", key = "posY", name = L["CharacterStats_PosY"], min = -halfHeight, max = halfHeight, step = 1, default = 0 },
         { type = "slider", key = "fontSize", name = L["CharacterStats_FontSize"], min = 8, max = 24, step = 1, default = 12 },
-        { type = "dropdown", key = "outline", name = L["CharacterStats_Outline"], default = 0,
-          items = {
-              { value = 0, text = L["CS_OutlineNone"] },
-              { value = 1, text = L["CS_OutlineThin"] },
-              { value = 2, text = L["CS_OutlineThick"] },
-          } },
         { type = "slider", key = "lineSpacing", name = L["CharacterStats_LineSpacing"], min = 0, max = 12, step = 1, default = 2 },
     },
 })
 
--- 面板（懒创建；名称/数值两列字体串挂于 statsFrame.labelText/valueText）
+-- 面板（懒创建；文本挂于 statsFrame.statText）
 local statsFrame
--- 名称列与数值列之间的固定间距（最长数值与名称的距离）
-local VALUE_COLUMN_GAP = 8
 -- 事件防抖标志：0.1s 内多次事件只刷新一次
 local updatePending = false
 -- 移速刷新计时器（OnEnable 启动，OnDisable 取消，禁用后零开销）
@@ -434,29 +425,22 @@ local function Refresh()
     -- 5. 移速（实时移动速度百分比，由 Ticker 驱动每秒刷新）
     table.insert(lines, { L["CS_MoveSpeed"], GetMoveSpeedText(), "movespeed" })
 
-    -- 双列拼接：名称列与数值列均左对齐（数值列锚定名称列右侧），数值与名称同色
+    -- 单列拼接：每行「|cff色名称  数值|r」，名称与数值同色、间隔两个空格；
     -- secret 字符串无法参与 table.concat，改用 SetFormattedText：
     -- 格式串只含普通字符串（颜色码同理），可能为 secret 的文本作为参数传入，由客户端渲染
-    local labelFmt, labelValues = {}, {}
-    local valueFmt, valueValues = {}, {}
+    local fmt, values = {}, {}
     for _, line in ipairs(lines) do
         local color = STAT_COLORS[line[3]] or "FFD100"
-        table.insert(labelFmt, "|cff" .. color .. "%s|r")
-        table.insert(labelValues, line[1])
-        table.insert(valueFmt, "|cff" .. color .. "%s|r")
-        table.insert(valueValues, line[2])
+        table.insert(fmt, "|cff" .. color .. "%s  %s|r")
+        table.insert(values, line[1])
+        table.insert(values, line[2])
     end
-    statsFrame.labelText:SetFormattedText(table.concat(labelFmt, "\n"), unpack(labelValues))
-    statsFrame.valueText:SetFormattedText(table.concat(valueFmt, "\n"), unpack(valueValues))
+    statsFrame.statText:SetFormattedText(table.concat(fmt, "\n"), unpack(values))
 
-    -- 面板尺寸自适应两列文本：宽 = 名称列宽 + 固定间距 + 数值列宽
-    -- （最长数值与名称间距固定）；文本含 secret 时宽高可能也是 secret
-    -- （不可算术），pcall 保护，失败保持原尺寸
+    -- 面板尺寸自适应文本（宽 = 最长行宽）；文本含 secret 时宽高可能也是
+    -- secret（不可算术），pcall 保护，失败保持原尺寸
     pcall(function()
-        local labelWidth = statsFrame.labelText:GetStringWidth()
-        local labelHeight = statsFrame.labelText:GetStringHeight()
-        local valueWidth = statsFrame.valueText:GetStringWidth()
-        statsFrame:SetSize(labelWidth + VALUE_COLUMN_GAP + valueWidth, labelHeight)
+        statsFrame:SetSize(statsFrame.statText:GetStringWidth(), statsFrame.statText:GetStringHeight())
     end)
 end
 
@@ -482,23 +466,16 @@ local function GetOption(key, default)
     return value
 end
 
--- 描边档位 → SetFont flags（0=无 1=细描边 2=粗描边）
-local OUTLINE_FLAGS = { [0] = "", [1] = "OUTLINE", [2] = "THICKOUTLINE" }
-
 -- ------------------------------------------------------------
--- ApplyFontAndSpacing: 按设置项应用字号/描边/行间距（两列同步）
+-- ApplyFontAndSpacing: 按设置项应用字号/行间距
 -- ------------------------------------------------------------
 local function ApplyFontAndSpacing()
     if not statsFrame or not statsFrame.fontPath then return end
     local fontSize = GetOption("fontSize", 12)
-    -- 描边：0=无 1=细 2=粗；兼容旧版布尔设置（true 视为细描边）
-    local outlineValue = GetOption("outline", 0)
-    local outline = (outlineValue == true) and "OUTLINE" or (OUTLINE_FLAGS[outlineValue] or "")
     local spacing = GetOption("lineSpacing", 2)
-    statsFrame.labelText:SetFont(statsFrame.fontPath, fontSize, outline)
-    statsFrame.valueText:SetFont(statsFrame.fontPath, fontSize, outline)
-    statsFrame.labelText:SetSpacing(spacing)
-    statsFrame.valueText:SetSpacing(spacing)
+    -- 文字固定细描边（OUTLINE）
+    statsFrame.statText:SetFont(statsFrame.fontPath, fontSize, "OUTLINE")
+    statsFrame.statText:SetSpacing(spacing)
 end
 
 -- ------------------------------------------------------------
@@ -511,18 +488,13 @@ local function CreateStatsFrame()
     -- 无边框无背景，不拦截鼠标（纯文本展示）
     f:EnableMouse(false)
 
-    -- 名称列：锚定面板左上角，左对齐（面板左上角即锚点，向右下扩展）
-    f.labelText = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    f.labelText:SetPoint("TOPLEFT", 0, 0)
-    f.labelText:SetJustifyH("LEFT")
-
-    -- 数值列：锚定名称列右侧（保持固定间距），左对齐
-    f.valueText = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    f.valueText:SetPoint("TOPLEFT", f.labelText, "TOPRIGHT", VALUE_COLUMN_GAP, 0)
-    f.valueText:SetJustifyH("LEFT")
+    -- 单列文本：锚定面板左上角，左对齐（面板左上角即锚点，向右下扩展）
+    f.statText = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    f.statText:SetPoint("TOPLEFT", 0, 0)
+    f.statText:SetJustifyH("LEFT")
 
     -- 缓存模板默认字体路径（字号/描边由设置项控制，经 SetFont 应用）
-    f.fontPath = f.labelText:GetFont()
+    f.fontPath = f.statText:GetFont()
 
     return f
 end
@@ -546,7 +518,7 @@ function module:OnOptionChanged(key, value)
     if not statsFrame then return end
     if key == "posX" or key == "posY" then
         ApplyPosition()
-    elseif key == "fontSize" or key == "outline" or key == "lineSpacing" then
+    elseif key == "fontSize" or key == "lineSpacing" then
         ApplyFontAndSpacing()
         Refresh()
     end

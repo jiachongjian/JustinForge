@@ -8,8 +8,8 @@
 --   「世」按钮（大脚世界频道）支持右键：未加入时自动加入频道，
 --   已加入时退出频道。
 --   按钮为简约风格：无背景无边框的纯文字按钮，按钮区域紧贴文字；
---   鼠标悬停时文字保持频道色不变，改以白色柔光背景（ADD 混合）
---   作为高亮反馈，移开后恢复无背景。
+--   鼠标悬停时文字颜色提亮（保留频道色色相，不变白）并轻微放大，
+--   移开后恢复频道色与原始字号。
 --   （实现逻辑提取自 ExwindTools 的 ExTools.ChatChannelBar，去除其
 --     编辑模式/吸附/每频道自定义等复杂设置，仅保留坐标/大小/间距设置）
 --
@@ -196,6 +196,18 @@ local function OnButtonClick(channel, button)
     end
 end
 
+-- 悬停高亮参数：颜色向白色方向提亮的比例（保留色相，不变纯白）、
+-- 文字放大倍数
+local HOVER_BRIGHTEN = 0.45
+local HOVER_SCALE = 1.15
+
+-- 提亮频道色（向白色方向移动 HOVER_BRIGHTEN 比例，保留色相）
+local function BrightenColor(c)
+    return c.r + (1 - c.r) * HOVER_BRIGHTEN,
+           c.g + (1 - c.g) * HOVER_BRIGHTEN,
+           c.b + (1 - c.b) * HOVER_BRIGHTEN
+end
+
 -- ------------------------------------------------------------
 -- 创建按钮容器与频道按钮（仅在首次启用时创建一次）
 -- ------------------------------------------------------------
@@ -220,22 +232,22 @@ local function CreateBarFrame()
         text:SetTextColor(channel.r, channel.g, channel.b)
         btn.text = text
         btn.channelData = channel
+        -- 悬停脚本引用的当前字号（ApplyLayout 会按设置刷新，此处先给默认值兜底）
+        btn.fontSize = DEFAULT_FONT_SIZE
 
-        -- 悬停高亮背景：白色半透明 + ADD 混合（柔光质感，主流插件
-        -- 常用的 glow/hover 反馈），文字频道色保持不变
-        local bg = btn:CreateTexture(nil, "BACKGROUND")
-        bg:SetAllPoints()
-        bg:SetColorTexture(1, 1, 1, 0.25)
-        bg:SetBlendMode("ADD")
-        bg:Hide()
-        btn.highlight = bg
-
-        -- 悬停反馈：显示/隐藏柔光背景，文字颜色不改动
+        -- 悬停反馈：文字颜色提亮（保留频道色色相）并轻微放大，
+        -- 移开后恢复频道色与原始字号（字号记录在 btn.fontSize，
+        -- 由 ApplyLayout 维护）
         btn:SetScript("OnEnter", function(self)
-            self.highlight:Show()
+            local c = self.channelData
+            self.text:SetTextColor(BrightenColor(c))
+            self.text:SetFont(STANDARD_TEXT_FONT,
+                math.floor(self.fontSize * HOVER_SCALE + 0.5), "OUTLINE")
         end)
         btn:SetScript("OnLeave", function(self)
-            self.highlight:Hide()
+            local c = self.channelData
+            self.text:SetTextColor(c.r, c.g, c.b)
+            self.text:SetFont(STANDARD_TEXT_FONT, self.fontSize, "OUTLINE")
         end)
 
         -- 点击通过 OnClick 分发左右键
@@ -266,8 +278,11 @@ local function ApplyLayout()
         btn:SetSize(btnSize, btnSize)
         btn:ClearAllPoints()
         btn:SetPoint("LEFT", barFrame, "LEFT", spacing + (i - 1) * (btnSize + spacing), 0)
+        btn.fontSize = fontSize
         btn.text:SetFont(STANDARD_TEXT_FONT, fontSize, "OUTLINE")
-        btn.text:SetWidth(btnSize - 2)
+        -- 不设 SetWidth：按钮尺寸已跟随字号，单字不会溢出；
+        -- 保留宽度限制反而会在悬停放大（×HOVER_SCALE）时截断文字
+        btn.text:SetWidth(0)
     end
 end
 

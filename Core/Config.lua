@@ -37,11 +37,10 @@
 --       -- 坐标类滑条以屏幕中心为原点（min 负、max 正，0 居中）
 --       { type = "checkbox", key = "outline", name = "...",
 --         default = false, tooltip = "..." },
---       { type = "dropdown", key = "outline", name = "...", default = 0,
---         items = { { value = 0, text = "无" }, { value = 1, text = "细" } },
---         tooltip = "..." },
 --       { type = "button", key = "playTest", name = "...",
 --         buttonText = "播放", tooltip = "..." },
+--   注意：曾尝试 dropdown 类型（Settings.CreateDropdown），
+--   12.0.7 游戏内下拉无法展开，已移除；多选场景请用滑条代替
 --   }
 --   值绑定到 DB.profile[mod.key][opt.key]，变化时回调
 --   mod:OnOptionChanged(opt.key, value)（模块可自行实现）
@@ -171,37 +170,6 @@ local function RegisterModuleOption(category, mod, dbEntry, opt)
             opt.default and true or false
         )
         Settings.CreateCheckbox(category, setting, opt.tooltip)
-
-        setting:SetValueChangedCallback(NotifyOptionChanged)
-    elseif opt.type == "dropdown" then
-        -- 下拉列表：数值型选项绑定 dbEntry
-        -- 已对照 12.0.7 源码核实：Settings.CreateDropdown(category, setting,
-        -- options, tooltip) 存在；options 为条目表（{value, label, text, ...}）
-        local setting = Settings.RegisterAddOnSetting(
-            category,
-            "JustinForge." .. mod.key .. "." .. opt.key,
-            opt.key,
-            dbEntry,
-            Settings.VarType.Number,
-            opt.name,
-            opt.default
-        )
-        -- 选项表优先用官方容器工厂生成（条目含完整字段）；
-        -- 工厂不可用时手工构造等价条目
-        local options
-        if Settings.CreateControlTextContainer then
-            local container = Settings.CreateControlTextContainer()
-            for _, item in ipairs(opt.items) do
-                container:Add(item.value, item.text)
-            end
-            options = container:GetData()
-        else
-            options = {}
-            for _, item in ipairs(opt.items) do
-                table.insert(options, { value = item.value, label = item.text, text = item.text })
-            end
-        end
-        Settings.CreateDropdown(category, setting, options, opt.tooltip)
 
         setting:SetValueChangedCallback(NotifyOptionChanged)
     elseif opt.type == "button" then

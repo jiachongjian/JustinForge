@@ -98,8 +98,11 @@ local eventFrame
 local soundHandle
 -- 自动停止计时器
 local stopTimer
--- 当前是否有嗜血 DEBUFF
-local hasBloodlust = false
+-- 上次检测到的嗜血疲惫 DEBUFF 剩余秒数（无则 nil）
+-- 判定逻辑：当剩余时间「突然增大到接近满值」时视为嗜血刚施放。
+-- 不能用「是否有 DEBUFF」的二值状态做幂等——疲惫 DEBUFF 持续 600 秒而嗜血 CD
+-- 仅 2~5 分钟，连续开嗜血时该状态恒为 true，会导致后续每次都被幂等跳过而不响。
+local lastRemaining
 -- 已成功播放的音频路径，命中后直接复用不再探测
 local resolvedSoundPath
 -- 本次启用期间是否已提示过文件缺失（避免每次嗜血重复刷屏）
@@ -185,32 +188,33 @@ end
 -- ============================================================
 -- OnEvent: 事件分发
 -- ============================================================
--- UNIT_AURA: 玩家光环变化时检测嗜血 DEBUFF 的出现/消失
+-- PLAYER_AURAS_UPDATE / UNIT_AURA(player): 玩家光环变化时，根据疲惫 DEBUFF
+--   剩余时间的变化趋势判定嗜血的「施放」与「结束」
 -- PLAYER_ENTERING_WORLD: 登录/重载后初始化状态（不触发播放）
 -- PLAYER_DEAD / PLAYER_LEAVING_WORLD: 立即停止音频
 local function OnEvent(_, event, arg1)
-    if event == "UNIT_AURA" then
-        if arg1 ~= "player" then return end
-
+    if event == "PLAYER_AURAS_UPDATE" or (event == "UNIT_AURA" and arg1 == "player") then
         local remaining = CheckBloodlust()
-        local now = remaining ~= nil
-        -- 状态未变化时跳过（幂等）
-        if now == hasBloodlust then return end
+        local isFresh = remaining and remaining > FRESH_THRESHOLD
 
-        hasBloodlust = now
-        if now and remaining and remaining > FRESH_THRESHOLD then
-            -- 嗜血刚施放（剩余时间接近 600 秒）
-            PlayLust()
-        elseif not now then
-            -- 嗜血结束，停止音频（不播放结束音）
+        if isFresh then
+            -- 剩余时间接近满值（刚施放的疲惫 DEBUFF）→ 判定为新一波嗜血
+            -- 仅当上一波不是 fresh 时才播放，避免同一波内重复触发
+            if not (lastRemaining and lastRemaining > FRESH_THRESHOLD) then
+                PlayLust()
+            end
+        elseif lastRemaining and lastRemaining > FRESH_THRESHOLD then
+            -- 从「接近满值」变为「无 DEBUFF」→ 嗜血结束，停止音频
             StopCurrentMusic()
         end
+
+        lastRemaining = remaining
     elseif event == "PLAYER_ENTERING_WORLD" then
         -- 初始扫描：同步状态但不触发播放
-        local remaining = CheckBloodlust()
-        hasBloodlust = remaining ~= nil
+        lastRemaining = CheckBloodlust()
     elseif event == "PLAYER_DEAD" or event == "PLAYER_LEAVING_WORLD" then
         StopCurrentMusic()
+        lastRemaining = nil
     end
 end
 
@@ -222,6 +226,7 @@ function module:OnEnable()
         eventFrame = CreateFrame("Frame")
         eventFrame:SetScript("OnEvent", OnEvent)
     end
+    eventFrame:RegisterEvent("PLAYER_AURAS_UPDATE")
     eventFrame:RegisterEvent("UNIT_AURA")
     eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
     eventFrame:RegisterEvent("PLAYER_DEAD")
@@ -237,8 +242,7 @@ function module:OnEnable()
     end
 
     -- 初始扫描：同步当前状态（不触发播放）
-    local remaining = CheckBloodlust()
-    hasBloodlust = remaining ~= nil
+    lastRemaining = CheckBloodlust()
 
     -- 重置状态
     missingFileWarned = false
@@ -252,7 +256,7 @@ function module:OnDisable()
         eventFrame:UnregisterAllEvents()
     end
     StopCurrentMusic()
-    hasBloodlust = false
+    lastRemaining = nil
 end
 
 -- ============================================================

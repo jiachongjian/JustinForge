@@ -39,6 +39,8 @@ local select = select
 local sort = table.sort
 local strrep = strrep
 local tconcat = table.concat
+local BreakUpLargeNumbers = BreakUpLargeNumbers
+local floor = math.floor
 local tinsert = tinsert
 local tostring = tostring
 local tonumber = tonumber
@@ -82,6 +84,13 @@ local RAID_CLASS_COLORS = RAID_CLASS_COLORS
 -- 12.x 秘密值检查
 local issecretvalue = _G.issecretvalue
 
+-- 暴雪数字格式（千分位分隔），失败回退普通字符串
+local function BreakUp(v)
+    local ok, res = pcall(BreakUpLargeNumbers, v)
+    if ok and res then return res end
+    return tostring(v)
+end
+
 local MAX_PLAYER_LEVEL = GetMaxLevelForPlayerExpansion()
 
 -- 缓存有效期
@@ -95,6 +104,12 @@ local TITLE_COLOR = { r = 1, g = 0.82, b = 0 }
 local FACTION_LOGO = {
     Alliance = "Interface\\TargetingFrame\\UI-PVP-Alliance",
     Horde    = "Interface\\TargetingFrame\\UI-PVP-Horde",
+}
+
+-- 阵营标示配色（部落红 / 联盟蓝）
+local FACTION_LOGO_COLOR = {
+    Alliance = { 0.15, 0.4, 1.0 },
+    Horde    = { 1.0, 0.15, 0.1 },
 }
 
 -- ============================================================
@@ -131,6 +146,8 @@ local achievementUILoaded = false
 local collapsedLines = {}
 -- 被改动过字体的 FontString 原始字体记录：[fs] = { file, size, flags }
 local defaultFonts = {}
+-- 需做「数值列等宽 + 右缘对齐」的行（地下城分数 / 团本进度）：[lineIndex] = true
+local colAlignLines = {}
 
 -- ============================================================
 -- 配色方案（团本难度）
@@ -179,7 +196,7 @@ local CURRENT_SEASON_RAIDS = {
 -- 阵营徽记纹理（创建一次复用）
 -- ============================================================
 local factionLogo = GameTooltip:CreateTexture(nil, "OVERLAY", nil, 7)
-factionLogo:SetSize(26, 26)
+factionLogo:SetSize(40, 40)
 factionLogo:Hide()
 
 -- ============================================================
@@ -227,9 +244,15 @@ local function RestoreAllFonts()
     end
 end
 
-GameTooltip:HookScript("OnTooltipCleared", RestoreAllFonts)
+GameTooltip:HookScript("OnTooltipCleared", function()
+    collapsedLines = {}
+    colAlignLines = {}
+    RestoreAllFonts()
+end)
 GameTooltip:HookScript("OnHide", function()
     factionLogo:Hide()
+    collapsedLines = {}
+    colAlignLines = {}
     RestoreAllFonts()
 end)
 
@@ -385,7 +408,7 @@ local function CollectRaidProgress(guid, isSelf)
             end
             if killed > 0 then
                 progress = progress or {}
-                progress[difficulty] = format("%d/%d", killed, #statIDs)
+                progress[difficulty] = format("%s/%d", BreakUp(killed), #statIDs)
                 if killed == #statIDs then break end
             end
         end
@@ -419,26 +442,116 @@ local function RequestComparison(unit, guid)
 end
 
 -- ============================================================
--- 字号应用（0 = 暴雪默认；跳过被折叠的行）
+-- 全局文字样式（字号 + 细描边；0 字号 = 暴雪默认；跳过被折叠的行）
+-- 对任意类型提示框（人物/物品/技能等）全局生效
 -- ============================================================
-local function ApplyFontSize(tooltip)
+local function StyleFonts(tooltip)
     local db = GetDB()
     local size = db.fontSize or 0
-    if size <= 0 then return end
+    local name = tooltip:GetName()
+    if not name then return end
     for i = 1, tooltip:NumLines() do
         if not collapsedLines[i] then
             local left, right = GetLineFonts(tooltip, i)
             if left then
                 RememberFont(left)
-                local f, _, fl = left:GetFont()
-                if f then left:SetFont(f, size, fl) end
+                local f, curSize, _ = left:GetFont()
+                if f then left:SetFont(f, size > 0 and size or curSize, "OUTLINE") end
             end
             if right then
                 RememberFont(right)
-                local f, _, fl = right:GetFont()
-                if f then right:SetFont(f, size, fl) end
+                local f, curSize, _ = right:GetFont()
+                if f then right:SetFont(f, size > 0 and size or curSize, "OUTLINE") end
             end
         end
+    end
+end
+
+-- ============================================================
+-- 追加行的右列右对齐（锚定到提示框右缘，inset 与左列对称）
+-- ============================================================
+local function GetRightInset(tooltip)
+    local name = tooltip:GetName()
+    local left1 = name and _G[name .. "TextLeft1"]
+    if left1 then
+        local ok, _, _, relPoint, x = pcall(left1.GetPoint, left1, 1)
+        if ok and relPoint and (relPoint == "LEFT" or relPoint == "TOPLEFT") and x then
+            local inset = math.abs(x)
+            if inset > 0 and inset < 40 then
+                return inset
+            end
+        end
+    end
+    return 15
+end
+
+local function RightAlignLines(tooltip, fromLine)
+    local name = tooltip:GetName()
+    if not name then return end
+    local inset = GetRightInset(tooltip)
+    for i = fromLine, tooltip:NumLines() do
+        local right = _G[name .. "TextRight" .. i]
+        if right then
+            right:ClearAllPoints()
+            right:SetPoint("RIGHT", tooltip, "RIGHT", -inset, 0)
+            right:SetJustifyH("RIGHT")
+        end
+    end
+end
+
+-- ============================================================
+-- AlignNumericCols: 数值行等宽列 + 右缘对齐
+-- （地下城分数 / 团本进度专用；必须在 StyleFonts 之后调用，
+--  用 FontString:GetStringWidth() 实测渲染宽度取最大值定列宽，
+--  规避非等宽字体造成的「同位数不同宽」参差，无需外部等宽字体）
+-- ============================================================
+local function AlignNumericCols(tooltip)
+    if not next(colAlignLines) then return end
+    local name = tooltip:GetName()
+    if not name then return end
+    local inset = GetRightInset(tooltip)
+
+    -- 实测各数值行渲染宽度（须在字体设置后），取最大值定整个数值列的宽度
+    local maxW = 0
+    local rights = {}
+    for line in pairs(colAlignLines) do
+        local right = _G[name .. "TextRight" .. line]
+        if right then
+            tinsert(rights, right)
+            local ok, w = pcall(right.GetStringWidth, right)
+            if ok and w and w > maxW then maxW = w end
+        end
+    end
+    if #rights == 0 or maxW <= 0 then return end
+
+    local colW = maxW + 4 -- 右缘留 4px 内边距，避免贴边
+    for _, right in ipairs(rights) do
+        pcall(function()
+            right:ClearAllPoints()
+            right:SetPoint("RIGHT", tooltip, "RIGHT", -inset, 0)
+            right:SetJustifyH("RIGHT")
+            right:SetWidth(colW)
+        end)
+    end
+end
+
+-- 全局字号/描边：注册到各内容类型的「后置回调」，确保在行构建完成、显示之前生效，
+-- 避免单纯 OnShow 时机导致默认字体闪现后被系统覆盖（物品/技能等）。
+-- 单位类型已由 OnTooltipUnit 单独处理，这里只覆盖其余类型。
+do
+    local dtypes = {
+        Enum.TooltipDataType.Item,
+        Enum.TooltipDataType.Spell,
+        Enum.TooltipDataType.Action,
+        Enum.TooltipDataType.Achievement,
+        Enum.TooltipDataType.Macro,
+    }
+    for _, dt in ipairs(dtypes) do
+        pcall(TooltipDataProcessor.AddTooltipPostCall, dt, function(tooltip)
+            if module.enabled then
+                StyleFonts(tooltip)
+            end
+        end)
     end
 end
 
@@ -496,10 +609,14 @@ local function ModifyGuildLine(tooltip, unit)
             local text = left:GetText()
             if text and text:find(guildName, 1, true) then
                 local newText
+                -- <公会名称>[会阶]，尖括号/方括号符号为白色
                 if rankName and rankName ~= "" then
-                    newText = format("|cff1eff00%s|r~|cff1eff00%s|r", guildName, rankName)
+                    newText = format(
+                        "|cffffffff<|r|cff1eff00%s|r|cffffffff>|r" ..
+                        "|cffffffff[|r|cff1eff00%s|r|cffffffff]|r",
+                        guildName, rankName)
                 else
-                    newText = format("|cff1eff00%s|r", guildName)
+                    newText = format("|cffffffff<|r|cff1eff00%s|r|cffffffff>|r", guildName)
                 end
                 left:SetText(newText)
                 return
@@ -555,7 +672,7 @@ local function ModifyLevelAndSpecLine(tooltip, unit)
     if levelIdx then
         local left = _G["GameTooltipTextLeft"..levelIdx]
         if left then
-            local parts = { format("|cffffff00%d|r", level) }
+            local parts = { format("|cffffff00%s|r", BreakUp(level)) }
             if race and race ~= "" then tinsert(parts, race) end
             if specText then tinsert(parts, format("|cff%s%s|r", classHex, specText)) end
             if className then tinsert(parts, format("|cff%s%s|r", classHex, className)) end
@@ -601,8 +718,14 @@ local function ModifyFactionLine(tooltip, unit)
     local tex = FACTION_LOGO[englishFaction]
     if tex then
         factionLogo:SetTexture(tex)
+        local c = FACTION_LOGO_COLOR[englishFaction]
+        if c then
+            factionLogo:SetVertexColor(c[1], c[2], c[3])
+        else
+            factionLogo:SetVertexColor(1, 1, 1)
+        end
         factionLogo:ClearAllPoints()
-        factionLogo:SetPoint("TOPRIGHT", GameTooltip, "TOPRIGHT", -8, -8)
+        factionLogo:SetPoint("TOPRIGHT", GameTooltip, "TOPRIGHT", -10, -10)
         factionLogo:Show()
     else
         factionLogo:Hide()
@@ -623,7 +746,7 @@ local function AddSummaryLines(tooltip, unit, summary)
             local kMap = C_MythicPlus_GetOwnedKeystoneChallengeMapID()
             if kLevel and kLevel > 0 and kMap and kMap > 0 then
                 local info = GetMapInfo(kMap)
-                return format("|cffa335ee%s（%d）|r", info and info.name or "?", kLevel)
+                return format("|cffa335ee%s（%s）|r", info and info.name or "?", BreakUp(kLevel))
             end
             return nil
         end)
@@ -634,16 +757,15 @@ local function AddSummaryLines(tooltip, unit, summary)
 
     if not hasScore and not keyText and not ilvl then return end
 
-    tooltip:AddLine(" ")
-
-    -- 大秘境分数（按分数段着色）
+    -- M+ 分数：紧贴上一行，不在中间加空行
     if hasScore then
         local okColor, color = pcall(C_ChallengeMode_GetDungeonScoreRarityColor, summary.currentSeasonScore)
         local okText, scoreText = pcall(function()
+            local s = tostring(summary.currentSeasonScore)
             if okColor and color then
-                return color:WrapTextInColorCode(summary.currentSeasonScore)
+                return color:WrapTextInColorCode(s)
             end
-            return tostring(summary.currentSeasonScore)
+            return s
         end)
         if not okText then scoreText = "?" end
         tooltip:AddDoubleLine(L["TE_MPScore"], scoreText,
@@ -656,11 +778,13 @@ local function AddSummaryLines(tooltip, unit, summary)
             TITLE_COLOR.r, TITLE_COLOR.g, TITLE_COLOR.b, 1, 1, 1)
     end
 
-    -- 物品等级：（套装数/5 紫色 #C952F4）装等 1 位小数
+    -- 物品等级：（套装数/5 粉色 #FF69B4）装等 1 位小数（与套装无空格）
     if ilvl then
         local setCount = GetUnitSetCount(unit)
         local okFmt, ilvlText = pcall(function()
-            return format("|cffc952f4（%d/5）|r %.1f", setCount, ilvl)
+            local intPart, decPart = floor(ilvl), floor(ilvl * 10) % 10
+            return format("|cffff69b4（%s/5）|r%s.%d",
+                BreakUp(setCount), BreakUp(intPart), decPart)
         end)
         if not okFmt then ilvlText = "?" end
         tooltip:AddDoubleLine(L["TE_ItemLevel"], ilvlText,
@@ -673,20 +797,21 @@ end
 -- ============================================================
 local function AddDungeonScores(tooltip, summary)
     if not summary or not summary.runs then return end
+    if not next(summary.runs) then return end
 
-    local lines = {}
+    local entries = {}
     for _, run in pairs(summary.runs) do
         local info = GetMapInfo(run.challengeModeID)
         if info and SafePositive(run.bestRunLevel) then
-            local okLv, lvlNum = pcall(tostring, run.bestRunLevel)
-            if not okLv then lvlNum = "?" end
+            local okLv, levelNum = pcall(BreakUp, run.bestRunLevel)
+            if not okLv or not levelNum or levelNum == "" then levelNum = "?" end
 
             -- 限时白色层数 + +N 前缀；超时灰色无前缀
-            local lvlColor = "ffaaaaaa"
             local pluses = ""
+            local timed = false
             local okFin, isFinished = pcall(function() return run.finishedSuccess end)
             if okFin and isFinished then
-                lvlColor = "ffffffff"
+                timed = true
                 if info.timeLimit and run.bestRunDurationMS then
                     local okUp, upgrades = pcall(function()
                         local sec = run.bestRunDurationMS / 1000
@@ -702,36 +827,57 @@ local function AddDungeonScores(tooltip, summary)
 
             local scoreColor = C_ChallengeMode_GetSpecificDungeonOverallScoreRarityColor(run.mapScore)
             local okScore, scoreText = pcall(function()
-                return scoreColor and scoreColor:WrapTextInColorCode(run.mapScore)
-                    or tostring(run.mapScore)
+                local s = BreakUp(run.mapScore)
+                return scoreColor and scoreColor:WrapTextInColorCode(s) or s
             end)
             if not okScore then scoreText = "?" end
 
-            -- 层数右对齐：左侧空格补齐至固定可见宽度（5），
-            -- 使不同 +N 前缀的行层数与分数间距一致
-            local visibleLen = #pluses + #lvlNum
-            local pad = visibleLen < 5 and strrep(" ", 5 - visibleLen) or ""
-            local right = format("%s%s|cff%s%s|r %s", pad, pluses, lvlColor, lvlNum, scoreText)
-
-            -- 左侧：地下城图标 + 名称（图标取自 GetMapUIInfo 第 4 返回值）
-            local left = info.tex and format("|T%d:0|t %s", info.tex, info.name) or info.name
-
-            tinsert(lines, {
-                order = seasonOrder[run.challengeModeID] or 999,
-                left = left,
-                right = right,
+            tinsert(entries, {
+                order  = seasonOrder[run.challengeModeID] or 999,
+                timed  = timed,
+                level  = run.bestRunLevel,
+                mapScore = run.mapScore,
+                left   = info.tex and format("|T%d:0|t %s", info.tex, info.name) or info.name,
+                right  = format("%s|cffffffff%s|r %s", pluses, levelNum, scoreText),
             })
         end
     end
 
-    if #lines == 0 then return end
+    if #entries == 0 then return end
 
-    sort(lines, function(a, b) return a.order < b.order end)
+    -- 最佳记录：限时前提下层数最高，其次分数最高（左侧加黄色星号 ★）
+    local bestEntry
+    for _, e in ipairs(entries) do
+        if e.timed then
+            if bestEntry == nil then
+                bestEntry = e
+            else
+                local prev = bestEntry
+                local okLvl, higher = pcall(function() return e.level > prev.level end)
+                local better = false
+                if okLvl and higher then
+                    better = true
+                elseif not (okLvl and higher) then
+                    local okScr, higherScr = pcall(function() return e.mapScore > prev.mapScore end)
+                    if okScr and higherScr then better = true end
+                end
+                if better then bestEntry = e end
+            end
+        end
+    end
+
+    sort(entries, function(a, b) return a.order < b.order end)
 
     tooltip:AddLine(" ")
-    for _, line in ipairs(lines) do
-        tooltip:AddDoubleLine(line.left, line.right,
+    for _, e in ipairs(entries) do
+        local right = e.right
+        if e == bestEntry then
+            right = format("|cffffff00★|r %s", right)
+        end
+        tooltip:AddDoubleLine(e.left, right,
             TITLE_COLOR.r, TITLE_COLOR.g, TITLE_COLOR.b, 1, 1, 1)
+        -- 记录数值行（层数+分数），供等宽列右对齐
+        colAlignLines[tooltip:NumLines()] = true
     end
 end
 
@@ -757,6 +903,8 @@ local function AddRaidLines(tooltip, guid)
                     local right = format("|cff%s%s %s|r", diff.color, diff.abbr, text)
                     tooltip:AddDoubleLine(left, right,
                         TITLE_COLOR.r, TITLE_COLOR.g, TITLE_COLOR.b, 1, 1, 1)
+                    -- 记录数值行（难度+进度），供等宽列右对齐
+                    colAlignLines[tooltip:NumLines()] = true
                 end
             end
         end
@@ -796,7 +944,6 @@ local function AddTargetOfTarget(tooltip, unit)
         targetText = format(">>%s<<", targetName)
     end
 
-    tooltip:AddLine(" ")
     tooltip:AddDoubleLine(L["TE_TargetTarget"], targetText,
         TITLE_COLOR.r, TITLE_COLOR.g, TITLE_COLOR.b, 1, 1, 1)
 end
@@ -844,14 +991,18 @@ local function OnTooltipUnit(tooltip, data)
     if not unit or (issecretvalue and issecretvalue(unit)) then return end
     if not UnitIsPlayer(unit) then return end
 
-    -- 重置折叠行记录
+    -- 重置折叠行与等宽列记录
     collapsedLines = {}
+    colAlignLines = {}
 
     -- ---- 阶段1：修改已有行（所有玩家） ----
     ModifyNameLine(tooltip, unit)
     ModifyGuildLine(tooltip, unit)
     ModifyLevelAndSpecLine(tooltip, unit)
     ModifyFactionLine(tooltip, unit)
+
+    -- 记录追加区起点（阶段2新行），用于统一右对齐
+    local appendStart = tooltip:NumLines() + 1
 
     -- ---- 阶段2：满级玩家追加 M+ 与团本信息 ----
     local okLevel, isMaxLevel = pcall(function() return UnitLevel(unit) == MAX_PLAYER_LEVEL end)
@@ -861,6 +1012,8 @@ local function OnTooltipUnit(tooltip, data)
     if okLevel and isMaxLevel and guidOK then
         local summary = GetRatingData(unit, guid)
         AddSummaryLines(tooltip, unit, summary)
+        -- 目标的目标：紧接物品等级之后、无空格
+        AddTargetOfTarget(tooltip, unit)
         AddDungeonScores(tooltip, summary)
 
         -- 战斗中跳过团本进度（避免加载成就界面造成污染）
@@ -875,13 +1028,15 @@ local function OnTooltipUnit(tooltip, data)
                 RequestComparison(unit, guid)
             end
         end
+    else
+        -- ---- 目标的目标（非满级也支持） ----
+        AddTargetOfTarget(tooltip, unit)
     end
 
-    -- ---- 目标的目标 ----
-    AddTargetOfTarget(tooltip, unit)
-
-    -- ---- 阶段3：应用字号 ----
-    ApplyFontSize(tooltip)
+    -- ---- 阶段3：追加行右列右对齐 + 全局字号描边 + 数值列等宽 ----
+    RightAlignLines(tooltip, appendStart)
+    StyleFonts(tooltip)
+    AlignNumericCols(tooltip)
 
     tooltip:Show()
 end
