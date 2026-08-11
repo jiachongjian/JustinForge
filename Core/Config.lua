@@ -35,6 +35,11 @@
 --       { type = "slider", key = "posX", name = "...", min = -960,
 --         max = 960, step = 1, default = 0, tooltip = "..." },
 --       -- 坐标类滑条以屏幕中心为原点（min 负、max 正，0 居中）
+--       { type = "checkbox", key = "outline", name = "...",
+--         default = false, tooltip = "..." },
+--       { type = "dropdown", key = "outline", name = "...", default = 0,
+--         items = { { value = 0, text = "无" }, { value = 1, text = "细" } },
+--         tooltip = "..." },
 --       { type = "button", key = "playTest", name = "...",
 --         buttonText = "播放", tooltip = "..." },
 --   }
@@ -117,9 +122,21 @@ end
 -- RegisterModuleOption: 为模块声明的单个附加设置生成控件
 -- ------------------------------------------------------------
 -- slider：数值类设置（右侧显示当前数值）
+-- checkbox：开关类设置（绑定布尔值）
 -- button：触发式按钮，优先使用原生按钮控件，
 --         工厂不可用时回退为「勾选后触发并自动复位」的代理勾选框
 local function RegisterModuleOption(category, mod, dbEntry, opt)
+    -- 值变化时通知模块（值已由绑定写入 dbEntry）
+    -- pcall 保护：模块回调抛异常时聊天框提示，不影响设置面板本身
+    local function NotifyOptionChanged(_, value)
+        if mod.OnOptionChanged then
+            local ok, err = pcall(mod.OnOptionChanged, mod, opt.key, value)
+            if not ok then
+                ns.Util:Error((ns.L["Error_OptionCallback"]):format(opt.name or opt.key, tostring(err)))
+            end
+        end
+    end
+
     if opt.type == "slider" then
         local setting = Settings.RegisterAddOnSetting(
             category,
@@ -141,16 +158,52 @@ local function RegisterModuleOption(category, mod, dbEntry, opt)
         end)
         Settings.CreateSlider(category, setting, sliderOptions, opt.tooltip)
 
-        -- 滑条变化时通知模块（值已由绑定写入 dbEntry）
-        -- pcall 保护：模块回调抛异常时聊天框提示，不影响设置面板本身
-        setting:SetValueChangedCallback(function(_, value)
-            if mod.OnOptionChanged then
-                local ok, err = pcall(mod.OnOptionChanged, mod, opt.key, value)
-                if not ok then
-                    ns.Util:Error((ns.L["Error_OptionCallback"]):format(opt.name or opt.key, tostring(err)))
-                end
+        setting:SetValueChangedCallback(NotifyOptionChanged)
+    elseif opt.type == "checkbox" then
+        -- 开关型设置项（布尔值直接绑定 dbEntry）
+        local setting = Settings.RegisterAddOnSetting(
+            category,
+            "JustinForge." .. mod.key .. "." .. opt.key,
+            opt.key,
+            dbEntry,
+            Settings.VarType.Boolean,
+            opt.name,
+            opt.default and true or false
+        )
+        Settings.CreateCheckbox(category, setting, opt.tooltip)
+
+        setting:SetValueChangedCallback(NotifyOptionChanged)
+    elseif opt.type == "dropdown" then
+        -- 下拉列表：数值型选项绑定 dbEntry
+        -- 已对照 12.0.7 源码核实：Settings.CreateDropdown(category, setting,
+        -- options, tooltip) 存在；options 为条目表（{value, label, text, ...}）
+        local setting = Settings.RegisterAddOnSetting(
+            category,
+            "JustinForge." .. mod.key .. "." .. opt.key,
+            opt.key,
+            dbEntry,
+            Settings.VarType.Number,
+            opt.name,
+            opt.default
+        )
+        -- 选项表优先用官方容器工厂生成（条目含完整字段）；
+        -- 工厂不可用时手工构造等价条目
+        local options
+        if Settings.CreateControlTextContainer then
+            local container = Settings.CreateControlTextContainer()
+            for _, item in ipairs(opt.items) do
+                container:Add(item.value, item.text)
             end
-        end)
+            options = container:GetData()
+        else
+            options = {}
+            for _, item in ipairs(opt.items) do
+                table.insert(options, { value = item.value, label = item.text, text = item.text })
+            end
+        end
+        Settings.CreateDropdown(category, setting, options, opt.tooltip)
+
+        setting:SetValueChangedCallback(NotifyOptionChanged)
     elseif opt.type == "button" then
         -- 按钮类型：优先使用原生按钮控件（SettingButtonControlTemplate），
         -- 工厂 API 不可用时回退为「勾选即触发、触发后自动复位」的代理勾选框

@@ -2,12 +2,14 @@
 -- JustinForge 模块8: 聊天频道条 (ChatChannelBar.lua)
 -- ============================================================
 -- 功能描述：
---   在聊天框附近提供一排单字按钮（说/喊/队/副/团/会/世/骰/确/倒），
+--   在聊天框附近提供一排单字按钮（说/喊/队/副/团/世/骰/确/倒），
 --   左键点击聊天类按钮直接以对应频道激活聊天输入框，点击命令类按钮
 --   直接执行斜杠指令（/roll、/rc、/cd 10）。
 --   「世」按钮（大脚世界频道）支持右键：未加入时自动加入频道，
 --   已加入时退出频道。
---   按钮外观使用暴雪原生方形按钮模板（UIPanelSquareButton）。
+--   按钮为简约风格：无背景无边框的纯文字按钮，按钮区域紧贴文字；
+--   鼠标悬停时文字保持频道色不变，改以白色柔光背景（ADD 混合）
+--   作为高亮反馈，移开后恢复无背景。
 --   （实现逻辑提取自 ExwindTools 的 ExTools.ChatChannelBar，去除其
 --     编辑模式/吸附/每频道自定义等复杂设置，仅保留坐标/大小/间距设置）
 --
@@ -31,11 +33,13 @@ local addonName, ns = ...
 local L = ns.L
 local Util = ns.Util
 
--- 默认样式（提取自 ExwindTools 默认值，可在设置面板中调整）
--- 按钮文字大小跟随按钮大小：字号 = 按钮边长 × FONT_RATIO
-local DEFAULT_BUTTON_SIZE = 30
+-- 默认样式（可在设置面板中调整）
+-- 设置面板中的「文字大小」直接控制字号；
+-- 按钮区域 = 文字区域 + 内边距（紧贴文字，不再是大很多的方形区域）
+local DEFAULT_FONT_SIZE = 16
 local DEFAULT_SPACING = 3
-local FONT_RATIO = 16 / 30
+-- 按钮相对文字的上下左右内边距（px）
+local BTN_PADDING = 4
 
 -- 屏幕尺寸在文件加载时即可获取，作为坐标滑条的上限
 local screenWidth = math.floor(UIParent:GetWidth() or 1920)
@@ -56,12 +60,12 @@ local module = ns.Module:Register({
     options = {
         { type = "slider", key = "posX", name = L["ChatChannelBar_PosX"], min = -halfWidth,  max = halfWidth,  step = 1, default = 46 - halfWidth },
         { type = "slider", key = "posY", name = L["ChatChannelBar_PosY"], min = -halfHeight, max = halfHeight, step = 1, default = 207 - halfHeight },
-        { type = "slider", key = "buttonSize", name = L["ChatChannelBar_ButtonSize"], min = 16, max = 60, step = 1, default = DEFAULT_BUTTON_SIZE },
+        { type = "slider", key = "buttonSize", name = L["ChatChannelBar_ButtonSize"], min = 12, max = 48, step = 1, default = DEFAULT_FONT_SIZE },
         { type = "slider", key = "spacing", name = L["ChatChannelBar_Spacing"], min = 0, max = 20, step = 1, default = DEFAULT_SPACING },
     },
 })
 
--- 频道定义（固定列表，世界频道位于「会」之后）：
+-- 频道定义（固定列表，世界频道位于「团」之后）：
 --   chat  普通聊天频道，点击后以该频道打开输入框
 --   named 具名频道（世界频道），左键先解析频道号再打开输入框；
 --         右键在未加入时加入频道、已加入时退出频道
@@ -73,7 +77,6 @@ local CHANNELS = {
     { name = "队", cmd = "/p",                chat = true,  r = 0.67, g = 0.67, b = 1 },
     { name = "副", cmd = "/i",                chat = true,  r = 1,    g = 0.5,  b = 0 },
     { name = "团", cmd = "/raid",             chat = true,  r = 1,    g = 0.5,  b = 0 },
-    { name = "会", cmd = "/g",                chat = true,  r = 0.25, g = 1,    b = 0.25 },
     { name = "世", cmd = WORLD_CHANNEL_NAME,  named = true, r = 1,    g = 0.5,  b = 0.5 },
     { name = "骰", cmd = "/roll",             slash = true, r = 1,    g = 1,    b = 0 },
     { name = "确", cmd = "/rc",               slash = true, r = 0,    g = 1,    b = 1 },
@@ -204,21 +207,38 @@ local function CreateBarFrame()
     barFrame:EnableMouse(false)
 
     for i, channel in ipairs(CHANNELS) do
-        -- 暴雪原生方形按钮模板（UI-SquareButton 系列贴图，自带按下/禁用/高亮态）
-        local btn = CreateFrame("Button", "JFChatChannelBtn" .. i, barFrame, "UIPanelSquareButton")
+        -- 简约风格：无模板纯文字按钮，无背景/边框贴图
+        local btn = CreateFrame("Button", "JFChatChannelBtn" .. i, barFrame)
         btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 
-        -- 频道文字作为覆盖层显示在按钮贴图之上
+        -- 频道文字即按钮本体
         local text = btn:CreateFontString(nil, "OVERLAY")
         text:SetPoint("CENTER")
         text:SetJustifyH("CENTER")
-        text:SetFont(STANDARD_TEXT_FONT, math.floor(DEFAULT_BUTTON_SIZE * FONT_RATIO + 0.5), "OUTLINE")
+        text:SetFont(STANDARD_TEXT_FONT, DEFAULT_FONT_SIZE, "OUTLINE")
         text:SetText(channel.name)
         text:SetTextColor(channel.r, channel.g, channel.b)
         btn.text = text
         btn.channelData = channel
 
-        -- 模板自带按下/高亮视觉反馈，点击通过 OnClick 分发左右键
+        -- 悬停高亮背景：白色半透明 + ADD 混合（柔光质感，主流插件
+        -- 常用的 glow/hover 反馈），文字频道色保持不变
+        local bg = btn:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(1, 1, 1, 0.25)
+        bg:SetBlendMode("ADD")
+        bg:Hide()
+        btn.highlight = bg
+
+        -- 悬停反馈：显示/隐藏柔光背景，文字颜色不改动
+        btn:SetScript("OnEnter", function(self)
+            self.highlight:Show()
+        end)
+        btn:SetScript("OnLeave", function(self)
+            self.highlight:Hide()
+        end)
+
+        -- 点击通过 OnClick 分发左右键
         btn:SetScript("OnClick", function(self, button)
             OnButtonClick(self.channelData, button)
         end)
@@ -228,26 +248,26 @@ local function CreateBarFrame()
 end
 
 -- ------------------------------------------------------------
--- ApplyLayout: 按 DB 中的按钮大小/间距重排按钮
+-- ApplyLayout: 按 DB 中的文字大小/间距重排按钮
 -- ------------------------------------------------------------
--- 文字大小跟随按钮大小（字号 = 边长 × FONT_RATIO）；
--- 文字宽度限制在按钮内（SetWidth），防止字号偏大时溢出到相邻按钮
+-- 设置值直接作为字号；按钮区域 = 文字区域 + BTN_PADDING 内边距，
+-- 按钮随文字走，不再有超出文字很多的空白点击区域
 local function ApplyLayout()
     if not barFrame then return end
     local db = ns.db.profile.chatChannelBar
-    local size = db.buttonSize or DEFAULT_BUTTON_SIZE
+    local fontSize = db.buttonSize or DEFAULT_FONT_SIZE
     local spacing = db.spacing or DEFAULT_SPACING
-    local fontSize = math.floor(size * FONT_RATIO + 0.5)
+    local btnSize = fontSize + BTN_PADDING * 2
 
     local count = #buttons
-    barFrame:SetSize(count * size + (count + 1) * spacing, size + spacing * 2)
+    barFrame:SetSize(count * btnSize + (count + 1) * spacing, btnSize + spacing * 2)
 
     for i, btn in ipairs(buttons) do
-        btn:SetSize(size, size)
+        btn:SetSize(btnSize, btnSize)
         btn:ClearAllPoints()
-        btn:SetPoint("LEFT", barFrame, "LEFT", spacing + (i - 1) * (size + spacing), 0)
+        btn:SetPoint("LEFT", barFrame, "LEFT", spacing + (i - 1) * (btnSize + spacing), 0)
         btn.text:SetFont(STANDARD_TEXT_FONT, fontSize, "OUTLINE")
-        btn.text:SetWidth(size - 4)
+        btn.text:SetWidth(btnSize - 2)
     end
 end
 

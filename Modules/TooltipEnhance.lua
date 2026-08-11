@@ -4,23 +4,27 @@
 -- 功能描述：
 --   合并原「鼠标提示大秘境信息」与「鼠标提示团本进度」模块，
 --   并增强人物提示框显示。鼠标指向玩家时：
---     1. 标题/正文/小字三档字号设置（默认暴雪原始字号）
---     2. 姓名行：职业染色、隐藏头衔、显示服务器名、显示状态
---     3. 公会行：公会名称~会阶名称，除~外均为公会绿色
---     4. 等级行：隐藏"等级""玩家"，数字为系统黄色
---     5. 职业专精行：按职业染色
---     6. 阵营：不显示文字，右上角显示联盟/部落 logo
---     7. M+分数、M+最佳记录（地下城名称+层数）、物品等级（套装数/5）
---     8. 每个地下城的大秘境限时情况和分数
---     9. 当前赛季团本通过情况
---    10. 目标的目标（>>姓名/你<<，采用姓名相同的配色）
+--     1. 提示框字号设置（0 = 暴雪默认，作用于提示框内所有文字）
+--     2. 姓名行：职业染色、隐藏头衔、同服隐藏服务器名、显示<离开><忙碌><离线>
+--     3. 公会行：公会名称~会阶名称，除 ~ 号外均为公会绿色
+--     4. 等级行：隐藏"等级""玩家"，数字为系统黄色；种族后插入专精（职业色），
+--        并折叠原独立的"专精 职业"行
+--     5. 阵营：不显示文字（折叠该行），右上角显示镂空风格阵营徽记；
+--        非玩家单位不显示徽记
+--     6. 大秘境分数、史诗钥匙（仅自己背包有钥匙时显示，史诗紫色）、
+--        物品等级（套装数 n/5 为 #C952F4 紫色）
+--     7. 每个地下城的最佳层数与分数（带地下城图标，层数右对齐）
+--     8. 当前赛季团本进度（带团本图标，中文难度，右对齐）
+--     9. 目标的目标（>>姓名/你<<，职业染色）
 --
 -- 实现原理：
 --   1. TooltipDataProcessor.AddTooltipPostCall(Unit) 回调中取鼠标单位
 --   2. 修改已有行（姓名/公会/等级/阵营）+ 追加新行（M+/团本/目标）
---   3. 回调无法卸载，禁用时通过模块开关短路返回
---   4. M+评分数据缓存 60 秒，团本进度数据缓存 120 秒
---   5. 团本进度对其他玩家使用成就对比 API，受观察距离限制
+--   3. 折叠行 = SetText("") + 字号缩为 1；字体改动统一记录原字体，
+--      在 OnTooltipCleared/OnHide 时恢复，避免污染后续提示框
+--   4. 回调无法卸载，禁用时通过模块开关短路返回
+--   5. M+评分数据缓存 60 秒，团本进度数据缓存 120 秒
+--   6. 团本进度对其他玩家使用成就对比 API，受观察距离限制
 -- ============================================================
 
 local addonName, ns = ...
@@ -34,6 +38,7 @@ local pairs = pairs
 local select = select
 local sort = table.sort
 local strrep = strrep
+local tconcat = table.concat
 local tinsert = tinsert
 local tostring = tostring
 local tonumber = tonumber
@@ -67,6 +72,8 @@ local C_ChallengeMode_GetDungeonScoreRarityColor = C_ChallengeMode.GetDungeonSco
 local C_ChallengeMode_GetMapTable = C_ChallengeMode.GetMapTable
 local C_ChallengeMode_GetMapUIInfo = C_ChallengeMode.GetMapUIInfo
 local C_ChallengeMode_GetSpecificDungeonOverallScoreRarityColor = C_ChallengeMode.GetSpecificDungeonOverallScoreRarityColor
+local C_MythicPlus_GetOwnedKeystoneChallengeMapID = C_MythicPlus.GetOwnedKeystoneChallengeMapID
+local C_MythicPlus_GetOwnedKeystoneLevel = C_MythicPlus.GetOwnedKeystoneLevel
 local C_PlayerInfo_GetInspectItemLevel = C_PlayerInfo.GetInspectItemLevel
 local C_PlayerInfo_GetPlayerMythicPlusRatingSummary = C_PlayerInfo.GetPlayerMythicPlusRatingSummary
 
@@ -84,6 +91,12 @@ local RAID_CACHE_TTL = 120
 -- 暴雪默认标题黄色
 local TITLE_COLOR = { r = 1, g = 0.82, b = 0 }
 
+-- 阵营徽记（镂空风格，透明背景）
+local FACTION_LOGO = {
+    Alliance = "Interface\\TargetingFrame\\UI-PVP-Alliance",
+    Horde    = "Interface\\TargetingFrame\\UI-PVP-Horde",
+}
+
 -- ============================================================
 -- 模块注册
 -- ============================================================
@@ -94,14 +107,10 @@ local module = ns.Module:Register({
     defaultEnabled = true,
 })
 
--- 三档字号设置（0 = 暴雪默认）
+-- 字号设置（0 = 暴雪默认）
 module.options = {
-    { type = "slider", key = "titleFontSize", name = L["TE_TitleFontSize"],
-      min = 0, max = 24, step = 1, default = 0, tooltip = L["TE_TitleFontSizeTip"] },
-    { type = "slider", key = "bodyFontSize", name = L["TE_BodyFontSize"],
-      min = 0, max = 24, step = 1, default = 0, tooltip = L["TE_BodyFontSizeTip"] },
-    { type = "slider", key = "smallFontSize", name = L["TE_SmallFontSize"],
-      min = 0, max = 24, step = 1, default = 0, tooltip = L["TE_SmallFontSizeTip"] },
+    { type = "slider", key = "fontSize", name = L["TE_FontSize"],
+      min = 0, max = 24, step = 1, default = 0, tooltip = L["TE_FontSizeTip"] },
 }
 
 -- ============================================================
@@ -111,24 +120,26 @@ module.options = {
 local ratingCache = {}
 -- 团本进度缓存：[guid] = { updated = 时间戳, raids = { [团本序号] = { [难度] = "x/y" } } }
 local raidCache = {}
--- 本赛季地图信息
+-- 本赛季地图信息：[challengeModeID] = { name, timeLimit, tex }
 local mapInfoCache = {}
 local seasonOrder = {}
 -- 已发出成就对比请求的 GUID 集合
 local pendingGUIDs = {}
 local achievementUILoaded = false
 
--- 字号行类型追踪：[lineIndex] = "title" | "body" | "small"
-local fontLineTypes = {}
+-- 本次回调中被折叠的行：[lineIndex] = true
+local collapsedLines = {}
+-- 被改动过字体的 FontString 原始字体记录：[fs] = { file, size, flags }
+local defaultFonts = {}
 
 -- ============================================================
--- 配色方案（团本难度，取自 WindTools）
+-- 配色方案（团本难度）
 -- ============================================================
 local DIFFICULTIES = {
-    { name = "随机团队", abbr = "随机", color = "ff8000" },
-    { name = "普通",     abbr = "PT",   color = "1eff00" },
-    { name = "英雄",     abbr = "H",    color = "0070dd" },
-    { name = "史诗",     abbr = "M",    color = "a335ee" },
+    { abbr = "随机", color = "ff8000" },  -- 橙
+    { abbr = "普通", color = "1eff00" },  -- 绿
+    { abbr = "英雄", color = "0070dd" },  -- 蓝
+    { abbr = "史诗", color = "a335ee" },  -- 紫
 }
 
 -- ============================================================
@@ -165,15 +176,11 @@ local CURRENT_SEASON_RAIDS = {
 }
 
 -- ============================================================
--- 阵营 logo 纹理（创建一次复用）
+-- 阵营徽记纹理（创建一次复用）
 -- ============================================================
 local factionLogo = GameTooltip:CreateTexture(nil, "OVERLAY", nil, 7)
-factionLogo:SetSize(28, 28)
+factionLogo:SetSize(26, 26)
 factionLogo:Hide()
-
-GameTooltip:HookScript("OnHide", function()
-    factionLogo:Hide()
-end)
 
 -- ============================================================
 -- 辅助函数
@@ -206,6 +213,44 @@ local function GetLineFonts(tooltip, index)
     return _G[name.."TextLeft"..index], _G[name.."TextRight"..index]
 end
 
+-- 记录 FontString 原始字体（首次改动前调用）
+local function RememberFont(fs)
+    if fs and not defaultFonts[fs] then
+        defaultFonts[fs] = { fs:GetFont() }
+    end
+end
+
+-- 恢复所有被改动过的字体（提示框清空/隐藏时调用，防止污染后续内容）
+local function RestoreAllFonts()
+    for fs, f in pairs(defaultFonts) do
+        fs:SetFont(f[1], f[2], f[3])
+    end
+end
+
+GameTooltip:HookScript("OnTooltipCleared", RestoreAllFonts)
+GameTooltip:HookScript("OnHide", function()
+    factionLogo:Hide()
+    RestoreAllFonts()
+end)
+
+-- 折叠一行：清空文字并把字号缩为 1（视觉上该行消失）
+local function CollapseLine(tooltip, idx)
+    local left, right = GetLineFonts(tooltip, idx)
+    if left then
+        RememberFont(left)
+        left:SetText("")
+        local f, _, fl = left:GetFont()
+        if f then left:SetFont(f, 1, fl) end
+    end
+    if right then
+        RememberFont(right)
+        right:SetText("")
+        local f, _, fl = right:GetFont()
+        if f then right:SetFont(f, 1, fl) end
+    end
+    collapsedLines[idx] = true
+end
+
 -- 获取职业颜色 hex 和 RGB
 local function GetClassColor(classFile)
     local color = RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile]
@@ -215,13 +260,18 @@ local function GetClassColor(classFile)
     return "ffffff", 1, 1, 1
 end
 
--- 安全获取单位名称和服务器
+-- 安全获取单位名称和服务器（同服返回 nil 服务器以隐藏）
 local function GetUnitNameAndServer(unit)
     local ok, name, server = pcall(UnitName, unit)
     if not ok or not name then return nil, nil end
     if issecretvalue and (issecretvalue(name) or (server and issecretvalue(server))) then return nil, nil end
-    if not server or server == "" then
-        server = GetRealmName()
+    if not server or server == "" then return name, nil end
+    -- 与自己同服则隐藏服务器名（忽略空格差异）
+    local myRealm = GetRealmName()
+    if myRealm then
+        if server:gsub("%s", "") == myRealm:gsub("%s", "") then
+            return name, nil
+        end
     end
     return name, server
 end
@@ -235,9 +285,10 @@ local function BuildSeasonMaps()
     local mapTable = C_ChallengeMode_GetMapTable and C_ChallengeMode_GetMapTable()
     if not mapTable then return end
     for index, mapID in ipairs(mapTable) do
-        local name, _, timeLimit = C_ChallengeMode_GetMapUIInfo(mapID)
+        -- GetMapUIInfo 第 4 返回值为地下城图标 texture
+        local name, _, timeLimit, texture = C_ChallengeMode_GetMapUIInfo(mapID)
         if name then
-            mapInfoCache[mapID] = { name = name, timeLimit = timeLimit }
+            mapInfoCache[mapID] = { name = name, timeLimit = timeLimit, tex = texture }
             seasonOrder[mapID] = index
         end
     end
@@ -246,8 +297,8 @@ end
 local function GetMapInfo(mapID)
     local info = mapInfoCache[mapID]
     if info == nil then
-        local name, _, timeLimit = C_ChallengeMode_GetMapUIInfo(mapID)
-        info = name and { name = name, timeLimit = timeLimit } or false
+        local name, _, timeLimit, texture = C_ChallengeMode_GetMapUIInfo(mapID)
+        info = name and { name = name, timeLimit = timeLimit, tex = texture } or false
         mapInfoCache[mapID] = info
     end
     return info or nil
@@ -266,23 +317,6 @@ local function GetRatingData(unit, guid)
     if not data then return nil end
     ratingCache[guid] = { updated = now, data = data }
     return data
-end
-
--- 获取最佳 M+ 记录（最高层数的 run）
-local function GetBestRun(summary)
-    if not summary or not summary.runs then return nil end
-    local best
-    for _, run in pairs(summary.runs) do
-        if SafePositive(run.bestRunLevel) then
-            local okCmp, isBetter = pcall(function()
-                return not best or run.bestRunLevel > best.bestRunLevel
-            end)
-            if okCmp and isBetter then
-                best = run
-            end
-        end
-    end
-    return best
 end
 
 -- ============================================================
@@ -385,39 +419,27 @@ local function RequestComparison(unit, guid)
 end
 
 -- ============================================================
--- 字号应用
+-- 字号应用（0 = 暴雪默认；跳过被折叠的行）
 -- ============================================================
-local function ApplyFontSizes(tooltip)
+local function ApplyFontSize(tooltip)
     local db = GetDB()
-    local titleSize = db.titleFontSize or 0
-    local bodySize = db.bodyFontSize or 0
-    local smallSize = db.smallFontSize or 0
-    if titleSize == 0 and bodySize == 0 and smallSize == 0 then return end
-
-    for i, fontType in pairs(fontLineTypes) do
-        local size = 0
-        if fontType == "title" then size = titleSize
-        elseif fontType == "body" then size = bodySize
-        elseif fontType == "small" then size = smallSize end
-        if size > 0 then
+    local size = db.fontSize or 0
+    if size <= 0 then return end
+    for i = 1, tooltip:NumLines() do
+        if not collapsedLines[i] then
             local left, right = GetLineFonts(tooltip, i)
             if left then
-                local font, _, flags = left:GetFont()
-                if font then left:SetFont(font, size, flags) end
+                RememberFont(left)
+                local f, _, fl = left:GetFont()
+                if f then left:SetFont(f, size, fl) end
             end
             if right then
-                local font, _, flags = right:GetFont()
-                if font then right:SetFont(font, size, flags) end
+                RememberFont(right)
+                local f, _, fl = right:GetFont()
+                if f then right:SetFont(f, size, fl) end
             end
         end
     end
-end
-
--- 标记行字号类型并返回当前行号
-local function MarkLine(tooltip, fontType)
-    local idx = tooltip:NumLines()
-    fontLineTypes[idx] = fontType
-    return idx
 end
 
 -- ============================================================
@@ -430,17 +452,21 @@ local function ModifyNameLine(tooltip, unit)
     local name, server = GetUnitNameAndServer(unit)
     if not name then return end
 
-    -- 获取职业颜色
     local okClass, _, classFile = pcall(UnitClass, unit)
-    local hex, r, g, b = "ffffff", 1, 1, 1
+    local hex = "ffffff"
     if okClass and classFile then
-        hex, r, g, b = GetClassColor(classFile)
+        hex = GetClassColor(classFile)
     end
 
-    -- 构建姓名文本：姓名-服务器（隐藏头衔）
-    local nameText = format("|cff%s%s-%s|r", hex, name, server or "")
+    -- 姓名（-服务器），同服隐藏服务器字段
+    local nameText
+    if server and server ~= "" then
+        nameText = format("|cff%s%s-%s|r", hex, name, server)
+    else
+        nameText = format("|cff%s%s|r", hex, name)
+    end
 
-    -- 添加状态
+    -- 状态：<离线>/<离开>/<忙碌>
     local okAFK, isAFK = pcall(UnitIsAFK, unit)
     local okDND, isDND = pcall(UnitIsDND, unit)
     local okConn, isConn = pcall(UnitIsConnected, unit)
@@ -453,7 +479,6 @@ local function ModifyNameLine(tooltip, unit)
     end
 
     left1:SetText(nameText)
-    fontLineTypes[1] = "title"
 end
 
 -- ============================================================
@@ -461,21 +486,22 @@ end
 -- ============================================================
 local function ModifyGuildLine(tooltip, unit)
     local ok, guildName, rankName = pcall(GetGuildInfo, unit)
-    if not ok or not guildName then return end
+    if not ok or not guildName or guildName == "" then return end
     if issecretvalue and (issecretvalue(guildName) or (rankName and issecretvalue(rankName))) then return end
 
-    -- 查找公会行（包含 < > 的行）
+    -- 直接按公会名纯文本查找（默认行可能带尖括号/颜色代码，不能依赖格式匹配）
     for i = 2, tooltip:NumLines() do
         local left = _G["GameTooltipTextLeft"..i]
         if left then
             local text = left:GetText()
-            if text and text:find("^<.*>$") then
-                -- 格式：公会名称~会阶名称，除~外均为公会绿色
-                local greenHex = "1eff00"
-                local newText = format("|cff%s%s|r~|cff%s%s|r",
-                    greenHex, guildName, greenHex, rankName or "")
+            if text and text:find(guildName, 1, true) then
+                local newText
+                if rankName and rankName ~= "" then
+                    newText = format("|cff1eff00%s|r~|cff1eff00%s|r", guildName, rankName)
+                else
+                    newText = format("|cff1eff00%s|r", guildName)
+                end
                 left:SetText(newText)
-                fontLineTypes[i] = "body"
                 return
             end
         end
@@ -483,60 +509,81 @@ local function ModifyGuildLine(tooltip, unit)
 end
 
 -- ============================================================
--- 人物提示框修改：等级行
+-- 人物提示框修改：等级行（合并专精，折叠原"专精 职业"行）
 -- ============================================================
-local function ModifyLevelLine(tooltip, unit)
+local function ModifyLevelAndSpecLine(tooltip, unit)
     local okLv, level = pcall(UnitLevel, unit)
     if not okLv or not level then return end
     if issecretvalue and issecretvalue(level) then return end
 
     local okRace, race = pcall(UnitRace, unit)
-    if okRace and race and issecretvalue and issecretvalue(race) then race = nil end
+    if not okRace then race = nil end
+    if race and issecretvalue and issecretvalue(race) then race = nil end
 
     local okClass, className, classFile = pcall(UnitClass, unit)
+    if not okClass then className, classFile = nil, nil end
+    if className and issecretvalue and issecretvalue(className) then className, classFile = nil, nil end
     local classHex = "ffffff"
-    if okClass and classFile then
-        classHex = GetClassColor(classFile)
-    end
+    if classFile then classHex = GetClassColor(classFile) end
 
-    -- 重建等级行：隐藏"等级""玩家"，数字黄色，职业按职业染色
-    local parts = {}
-    -- 等级数字（黄色）
-    tinsert(parts, format("|cffffff00%d|r", level))
-    -- 种族
-    if okRace and race and race ~= "" then
-        tinsert(parts, race)
-    end
-    -- 职业（职业染色）
-    if okClass and className and className ~= "" then
-        tinsert(parts, format("|cff%s%s|r", classHex, className))
-    end
-
-    local newText = table.concat(parts, " ")
-
-    -- 查找等级行（包含"等级"的行）
-    for i = 2, tooltip:NumLines() do
+    -- 定位等级行与等级行之下的「专精 职业」行
+    -- （限定 i > levelIdx，避免公会名含职业名时误判）
+    local numLines = tooltip:NumLines()
+    local levelIdx, specIdx, specText
+    for i = 2, numLines do
         local left = _G["GameTooltipTextLeft"..i]
         if left then
             local text = left:GetText()
-            if text and (text:find("等级") or text:find("Level")) then
-                left:SetText(newText)
-                fontLineTypes[i] = "body"
-                return
+            if text and text ~= "" then
+                if not levelIdx and (text:find("等级") or text:find("Level")) then
+                    levelIdx = i
+                elseif levelIdx and i > levelIdx and className and not specIdx
+                    and text:find(className, 1, true) then
+                    -- 剥离颜色代码与职业名，剩余即专精名
+                    local stripped = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+                    stripped = stripped:gsub(className, "")
+                    stripped = stripped:gsub("^%s+", ""):gsub("%s+$", "")
+                    if stripped ~= "" then
+                        specIdx, specText = i, stripped
+                    end
+                end
             end
         end
+    end
+
+    -- 重建等级行：黄色等级 + 种族 + 职业色专精 + 职业色职业
+    if levelIdx then
+        local left = _G["GameTooltipTextLeft"..levelIdx]
+        if left then
+            local parts = { format("|cffffff00%d|r", level) }
+            if race and race ~= "" then tinsert(parts, race) end
+            if specText then tinsert(parts, format("|cff%s%s|r", classHex, specText)) end
+            if className then tinsert(parts, format("|cff%s%s|r", classHex, className)) end
+            left:SetText(tconcat(parts, " "))
+        end
+    end
+
+    -- 折叠原独立的「专精 职业」行
+    if specIdx then
+        CollapseLine(tooltip, specIdx)
     end
 end
 
 -- ============================================================
--- 人物提示框修改：阵营行（移除文字，显示 logo）
+-- 人物提示框修改：阵营行（折叠文字，显示镂空徽记）
 -- ============================================================
 local function ModifyFactionLine(tooltip, unit)
     local ok, englishFaction = pcall(UnitFactionGroup, unit)
-    if not ok or not englishFaction then return end
-    if issecretvalue and issecretvalue(englishFaction) then return end
+    if not ok or not englishFaction then
+        factionLogo:Hide()
+        return
+    end
+    if issecretvalue and issecretvalue(englishFaction) then
+        factionLogo:Hide()
+        return
+    end
 
-    -- 移除阵营文字行
+    -- 折叠阵营文字行
     for i = 2, tooltip:NumLines() do
         local left = _G["GameTooltipTextLeft"..i]
         if left then
@@ -544,81 +591,85 @@ local function ModifyFactionLine(tooltip, unit)
             if text and (text == "联盟" or text == "部落" or
                          text:find("^联盟") or text:find("^部落") or
                          text:find("^Alliance") or text:find("^Horde")) then
-                left:SetText("")
-                fontLineTypes[i] = "body"
+                CollapseLine(tooltip, i)
                 break
             end
         end
     end
 
-    -- 显示阵营 logo
-    if englishFaction == "Alliance" then
-        factionLogo:SetTexture("Interface\\Icons\\inv_misc_tournaments_banner_human")
+    -- 仅联盟/部落显示徽记（中立如未选阵营熊猫人不显示）
+    local tex = FACTION_LOGO[englishFaction]
+    if tex then
+        factionLogo:SetTexture(tex)
         factionLogo:ClearAllPoints()
         factionLogo:SetPoint("TOPRIGHT", GameTooltip, "TOPRIGHT", -8, -8)
         factionLogo:Show()
-    elseif englishFaction == "Horde" then
-        factionLogo:SetTexture("Interface\\Icons\\inv_misc_tournaments_banner_orc")
-        factionLogo:ClearAllPoints()
-        factionLogo:SetPoint("TOPRIGHT", GameTooltip, "TOPRIGHT", -8, -8)
-        factionLogo:Show()
+    else
+        factionLogo:Hide()
     end
 end
 
 -- ============================================================
--- 追加：M+分数、M+最佳记录、物品等级
+-- 追加：大秘境分数 / 史诗钥匙 / 物品等级
 -- ============================================================
-local function AddMPScoreAndItemLevel(tooltip, unit, guid, summary)
+local function AddSummaryLines(tooltip, unit, summary)
     local hasScore = summary and SafePositive(summary.currentSeasonScore)
-    local bestRun = summary and GetBestRun(summary)
+
+    -- 史诗钥匙：仅自己（背包有钥匙时），史诗紫色「地下城名称（层数）」
+    local keyText
+    if UnitIsUnit(unit, "player") then
+        local okKey, text = pcall(function()
+            local kLevel = C_MythicPlus_GetOwnedKeystoneLevel()
+            local kMap = C_MythicPlus_GetOwnedKeystoneChallengeMapID()
+            if kLevel and kLevel > 0 and kMap and kMap > 0 then
+                local info = GetMapInfo(kMap)
+                return format("|cffa335ee%s（%d）|r", info and info.name or "?", kLevel)
+            end
+            return nil
+        end)
+        if okKey then keyText = text end
+    end
+
     local ilvl = GetUnitItemLevel(unit)
 
-    if not hasScore and not bestRun and not ilvl then return end
+    if not hasScore and not keyText and not ilvl then return end
 
     tooltip:AddLine(" ")
-    MarkLine(tooltip, "body")
 
-    -- M+ 分数
+    -- 大秘境分数（按分数段着色）
     if hasScore then
         local okColor, color = pcall(C_ChallengeMode_GetDungeonScoreRarityColor, summary.currentSeasonScore)
-        local scoreText
-        if okColor and color then
-            scoreText = color:WrapTextInColorCode(tostring(summary.currentSeasonScore))
-        else
-            scoreText = tostring(summary.currentSeasonScore)
-        end
+        local okText, scoreText = pcall(function()
+            if okColor and color then
+                return color:WrapTextInColorCode(summary.currentSeasonScore)
+            end
+            return tostring(summary.currentSeasonScore)
+        end)
+        if not okText then scoreText = "?" end
         tooltip:AddDoubleLine(L["TE_MPScore"], scoreText,
             TITLE_COLOR.r, TITLE_COLOR.g, TITLE_COLOR.b, 1, 1, 1)
-        MarkLine(tooltip, "body")
     end
 
-    -- M+ 最佳记录（地下城名称+层数）
-    if bestRun then
-        local info = GetMapInfo(bestRun.challengeModeID)
-        local okLv, levelText = pcall(function()
-            return format("%s +%d", info and info.name or "?", bestRun.bestRunLevel)
-        end)
-        if not okLv then levelText = "?" end
-        tooltip:AddDoubleLine(L["TE_MPBest"], levelText,
+    -- 史诗钥匙
+    if keyText then
+        tooltip:AddDoubleLine(L["TE_Keystone"], keyText,
             TITLE_COLOR.r, TITLE_COLOR.g, TITLE_COLOR.b, 1, 1, 1)
-        MarkLine(tooltip, "body")
     end
 
-    -- 物品等级（套装数/5）物品等级1位小数
+    -- 物品等级：（套装数/5 紫色 #C952F4）装等 1 位小数
     if ilvl then
         local setCount = GetUnitSetCount(unit)
         local okFmt, ilvlText = pcall(function()
-            return format("(%d/5) %.1f", setCount, ilvl)
+            return format("|cffc952f4（%d/5）|r %.1f", setCount, ilvl)
         end)
         if not okFmt then ilvlText = "?" end
         tooltip:AddDoubleLine(L["TE_ItemLevel"], ilvlText,
             TITLE_COLOR.r, TITLE_COLOR.g, TITLE_COLOR.b, 1, 1, 1)
-        MarkLine(tooltip, "body")
     end
 end
 
 -- ============================================================
--- 追加：每个地下城的大秘境限时情况和分数
+-- 追加：每个地下城的最佳层数与分数（带图标，层数右对齐）
 -- ============================================================
 local function AddDungeonScores(tooltip, summary)
     if not summary or not summary.runs then return end
@@ -627,24 +678,25 @@ local function AddDungeonScores(tooltip, summary)
     for _, run in pairs(summary.runs) do
         local info = GetMapInfo(run.challengeModeID)
         if info and SafePositive(run.bestRunLevel) then
-            local okLv, levelText = pcall(function()
-                if run.finishedSuccess then
-                    return format("|cffffffff%d|r", run.bestRunLevel)
-                end
-                return format("|cffaaaaaa%d|r", run.bestRunLevel)
-            end)
-            if not okLv then levelText = "?" end
+            local okLv, lvlNum = pcall(tostring, run.bestRunLevel)
+            if not okLv then lvlNum = "?" end
 
-            -- 限时升级数
-            if run.finishedSuccess and info.timeLimit and run.bestRunDurationMS then
-                local okUp, upgrades = pcall(function()
-                    local sec = run.bestRunDurationMS / 1000
-                    return (sec <= info.timeLimit * 0.6 and 3)
-                        or (sec <= info.timeLimit * 0.8 and 2)
-                        or 1
-                end)
-                if okUp and upgrades then
-                    levelText = strrep("+", upgrades) .. levelText
+            -- 限时白色层数 + +N 前缀；超时灰色无前缀
+            local lvlColor = "ffaaaaaa"
+            local pluses = ""
+            local okFin, isFinished = pcall(function() return run.finishedSuccess end)
+            if okFin and isFinished then
+                lvlColor = "ffffffff"
+                if info.timeLimit and run.bestRunDurationMS then
+                    local okUp, upgrades = pcall(function()
+                        local sec = run.bestRunDurationMS / 1000
+                        return (sec <= info.timeLimit * 0.6 and 3)
+                            or (sec <= info.timeLimit * 0.8 and 2)
+                            or 1
+                    end)
+                    if okUp and upgrades then
+                        pluses = strrep("+", upgrades)
+                    end
                 end
             end
 
@@ -655,10 +707,19 @@ local function AddDungeonScores(tooltip, summary)
             end)
             if not okScore then scoreText = "?" end
 
+            -- 层数右对齐：左侧空格补齐至固定可见宽度（5），
+            -- 使不同 +N 前缀的行层数与分数间距一致
+            local visibleLen = #pluses + #lvlNum
+            local pad = visibleLen < 5 and strrep(" ", 5 - visibleLen) or ""
+            local right = format("%s%s|cff%s%s|r %s", pad, pluses, lvlColor, lvlNum, scoreText)
+
+            -- 左侧：地下城图标 + 名称（图标取自 GetMapUIInfo 第 4 返回值）
+            local left = info.tex and format("|T%d:0|t %s", info.tex, info.name) or info.name
+
             tinsert(lines, {
                 order = seasonOrder[run.challengeModeID] or 999,
-                left = info.name,
-                right = levelText .. " " .. scoreText,
+                left = left,
+                right = right,
             })
         end
     end
@@ -668,27 +729,20 @@ local function AddDungeonScores(tooltip, summary)
     sort(lines, function(a, b) return a.order < b.order end)
 
     tooltip:AddLine(" ")
-    MarkLine(tooltip, "body")
-    tooltip:AddLine(L["TE_DungeonScore"], TITLE_COLOR.r, TITLE_COLOR.g, TITLE_COLOR.b)
-    MarkLine(tooltip, "title")
-
     for _, line in ipairs(lines) do
-        tooltip:AddDoubleLine(line.left, line.right, 1, 1, 1, 1, 1, 1)
-        MarkLine(tooltip, "small")
+        tooltip:AddDoubleLine(line.left, line.right,
+            TITLE_COLOR.r, TITLE_COLOR.g, TITLE_COLOR.b, 1, 1, 1)
     end
 end
 
 -- ============================================================
--- 追加：团本进度
+-- 追加：团本进度（带图标，中文难度，右对齐）
 -- ============================================================
 local function AddRaidLines(tooltip, guid)
     local entry = raidCache[guid]
     if not entry or not entry.raids then return end
 
     tooltip:AddLine(" ")
-    MarkLine(tooltip, "body")
-    tooltip:AddLine(L["TE_RaidProgress"], TITLE_COLOR.r, TITLE_COLOR.g, TITLE_COLOR.b)
-    MarkLine(tooltip, "title")
 
     for raidIndex, raid in ipairs(CURRENT_SEASON_RAIDS) do
         local progress = entry.raids[raidIndex]
@@ -697,11 +751,12 @@ local function AddRaidLines(tooltip, guid)
                 local text = progress[difficulty]
                 if text then
                     local diff = DIFFICULTIES[difficulty]
-                    local left = format("|T%d:0|t %s |cff%s%s|r",
-                        raid.tex, raid.name, diff.color, diff.name)
+                    -- 左侧：团本图标 + 团本名（默认黄色，不再重复难度名）
+                    local left = format("|T%d:0|t %s", raid.tex, raid.name)
+                    -- 右侧：彩色中文难度 + 击杀进度
                     local right = format("|cff%s%s %s|r", diff.color, diff.abbr, text)
-                    tooltip:AddDoubleLine(left, right, nil, nil, nil, 1, 1, 1)
-                    MarkLine(tooltip, "small")
+                    tooltip:AddDoubleLine(left, right,
+                        TITLE_COLOR.r, TITLE_COLOR.g, TITLE_COLOR.b, 1, 1, 1)
                 end
             end
         end
@@ -727,13 +782,11 @@ local function AddTargetOfTarget(tooltip, unit)
         if playerClass then hex = GetClassColor(playerClass) end
         targetText = format("|cff%s>>你<<|r", hex)
     else
-        -- 目标是其他单位：>>姓名<<
         local okName, targetName = pcall(UnitName, targetUnit)
         if not okName or not targetName then return end
         if issecretvalue and issecretvalue(targetName) then return end
 
         if okIsPlayer and isPlayerTarget then
-            -- 目标是其他玩家：按职业染色
             local _, _, targetClass = pcall(UnitClass, targetUnit)
             if targetClass then
                 local hex = GetClassColor(targetClass)
@@ -744,10 +797,8 @@ local function AddTargetOfTarget(tooltip, unit)
     end
 
     tooltip:AddLine(" ")
-    MarkLine(tooltip, "body")
     tooltip:AddDoubleLine(L["TE_TargetTarget"], targetText,
         TITLE_COLOR.r, TITLE_COLOR.g, TITLE_COLOR.b, 1, 1, 1)
-    MarkLine(tooltip, "body")
 end
 
 -- ============================================================
@@ -781,8 +832,9 @@ end)
 local function OnTooltipUnit(tooltip, data)
     if not module.enabled then return end
     if tooltip ~= GameTooltip then return end
+    -- 非玩家单位也可能触发本回调，先隐藏徽记（防止从玩家移到 NPC 时残留）
+    factionLogo:Hide()
 
-    -- 获取单位
     local unit
     if data and data.unit then
         unit = data.unit
@@ -792,49 +844,25 @@ local function OnTooltipUnit(tooltip, data)
     if not unit or (issecretvalue and issecretvalue(unit)) then return end
     if not UnitIsPlayer(unit) then return end
 
-    -- 重置字号追踪
-    fontLineTypes = {}
-
-    -- 隐藏阵营 logo（先隐藏，后面按需显示）
-    factionLogo:Hide()
+    -- 重置折叠行记录
+    collapsedLines = {}
 
     -- ---- 阶段1：修改已有行（所有玩家） ----
     ModifyNameLine(tooltip, unit)
     ModifyGuildLine(tooltip, unit)
-    ModifyLevelLine(tooltip, unit)
+    ModifyLevelAndSpecLine(tooltip, unit)
     ModifyFactionLine(tooltip, unit)
 
-    -- 标记未分类的已有行为 body
-    local initialLines = tooltip:NumLines()
-    for i = 2, initialLines do
-        if not fontLineTypes[i] then
-            fontLineTypes[i] = "body"
-        end
-    end
-
-    -- ---- 阶段2：目标的目标（所有玩家，在 M+/团本之后） ----
-    -- 先检查是否满级，满级才显示 M+ 和团本
+    -- ---- 阶段2：满级玩家追加 M+ 与团本信息 ----
     local okLevel, isMaxLevel = pcall(function() return UnitLevel(unit) == MAX_PLAYER_LEVEL end)
-    local isMax = okLevel and isMaxLevel
-
     local guid = UnitGUID(unit)
-    if not guid or (issecretvalue and issecretvalue(guid)) then
-        -- 无 GUID，仍可显示目标的目标和字号
-        AddTargetOfTarget(tooltip, unit)
-        ApplyFontSizes(tooltip)
-        tooltip:Show()
-        return
-    end
+    local guidOK = guid and not (issecretvalue and issecretvalue(guid))
 
-    if isMax then
-        -- ---- M+ 分数、最佳记录、物品等级 ----
+    if okLevel and isMaxLevel and guidOK then
         local summary = GetRatingData(unit, guid)
-        AddMPScoreAndItemLevel(tooltip, unit, guid, summary)
-
-        -- ---- 每个地下城的大秘境限时情况和分数 ----
+        AddSummaryLines(tooltip, unit, summary)
         AddDungeonScores(tooltip, summary)
 
-        -- ---- 团本进度 ----
         -- 战斗中跳过团本进度（避免加载成就界面造成污染）
         if not InCombatLockdown() then
             local entry = raidCache[guid]
@@ -853,7 +881,7 @@ local function OnTooltipUnit(tooltip, data)
     AddTargetOfTarget(tooltip, unit)
 
     -- ---- 阶段3：应用字号 ----
-    ApplyFontSizes(tooltip)
+    ApplyFontSize(tooltip)
 
     tooltip:Show()
 end
@@ -878,5 +906,6 @@ function module:OnDisable()
     ClearAchievementComparisonUnit()
     pendingGUIDs = {}
     factionLogo:Hide()
+    RestoreAllFonts()
     Util:Debug("TooltipEnhance: 已禁用")
 end

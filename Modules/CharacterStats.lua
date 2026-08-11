@@ -5,12 +5,15 @@
 --   在屏幕上常态显示一个小巧的人物属性面板（无边框无背景），
 --   固定按以下顺序展示：
 --     1. 主属性（力量/敏捷/智力，按当前专精自动识别）
---     2. 副属性（暴击 / 急速 / 精通 / 全能，保留 1 位小数）
+--     2. 副属性（暴击 / 急速 / 精通 / 全能，整数百分比）
 --     3. 第三属性（吸血 / 闪避 / 加速，仅当非 0 时显示，整数百分比）
 --     4. 坦克属性（躲闪 / 招架 / 格挡，仅坦克专精且非 0 时显示，整数百分比）
 --     5. 移速（实时移动速度百分比，100% = 基础跑步速度，每秒刷新）
---   面板不支持拖动，位置由设置面板中的坐标滑条决定（屏幕中心为原点）。
---   属性名称按类型着色（主属性为当前职业色），数值统一白色。
+--   面板左上角为锚点、向右下扩展，不支持拖动，
+--   位置由设置面板中的坐标滑条决定（屏幕中心为原点）。
+--   左右两列布局：名称列与数值列均左对齐，数值列锚定名称列右侧
+--   并保持固定间距；数值与属性名称同色（名称按属性类型着色，
+--   主属性为当前职业色）。字号/描边（无/细/粗）/行间距可在设置面板中调整。
 --
 -- 实现说明（数据计算/条件层以 ExwindTools 的 PStat_* 采集逻辑为蓝本从底层重构）：
 --   - 主属性：专精 ID 查表确定主属性类型（避免数值比较，对 12.0 secret value
@@ -49,11 +52,21 @@ local module = ns.Module:Register({
     options = {
         { type = "slider", key = "posX", name = L["CharacterStats_PosX"], min = -halfWidth,  max = halfWidth,  step = 1, default = 20 - halfWidth },
         { type = "slider", key = "posY", name = L["CharacterStats_PosY"], min = -halfHeight, max = halfHeight, step = 1, default = 0 },
+        { type = "slider", key = "fontSize", name = L["CharacterStats_FontSize"], min = 8, max = 24, step = 1, default = 12 },
+        { type = "dropdown", key = "outline", name = L["CharacterStats_Outline"], default = 0,
+          items = {
+              { value = 0, text = L["CS_OutlineNone"] },
+              { value = 1, text = L["CS_OutlineThin"] },
+              { value = 2, text = L["CS_OutlineThick"] },
+          } },
+        { type = "slider", key = "lineSpacing", name = L["CharacterStats_LineSpacing"], min = 0, max = 12, step = 1, default = 2 },
     },
 })
 
--- 面板与字体串（懒创建）
-local statsFrame, statsText
+-- 面板（懒创建；名称/数值两列字体串挂于 statsFrame.labelText/valueText）
+local statsFrame
+-- 名称列与数值列之间的固定间距（最长数值与名称的距离）
+local VALUE_COLUMN_GAP = 8
 -- 事件防抖标志：0.1s 内多次事件只刷新一次
 local updatePending = false
 -- 移速刷新计时器（OnEnable 启动，OnDisable 取消，禁用后零开销）
@@ -101,7 +114,7 @@ local PRIMARY_LABEL_KEY = {
 }
 
 -- ------------------------------------------------------------
--- 属性名称配色表（数值统一白色）
+-- 属性配色表（名称与数值同色）
 -- ------------------------------------------------------------
 -- 融合 ExwindTools（高饱和）与 Stats+（全属性独立色/分层）方案：
 --   副属性红/绿/黄/蓝四基色高饱和；第三属性中饱和；坦克属性低饱和 pastel；
@@ -152,24 +165,18 @@ local function IsPositive(v)
 end
 
 -- ------------------------------------------------------------
--- FormatPercent / FormatInt / FormatPercentInt: 安全格式化（兼容 secret 值）
+-- FormatInt / FormatPercentInt: 安全格式化（兼容 secret 值）
 -- ------------------------------------------------------------
 -- secret 值可传入 string.format，此时结果为 secret 字符串；
 -- secret 字符串无法参与 table.concat，但可作为 SetFormattedText 的
 -- 参数正常显示，因此不拦截直接返回，仅格式化抛错时回退显示 "?"
-local function FormatPercent(v)
-    local ok, text = pcall(string.format, "%.1f%%", v)
-    if not ok or not text then return "?" end
-    return text
-end
-
 local function FormatInt(v)
     local ok, text = pcall(string.format, "%d", v)
     if not ok or not text then return "?" end
     return text
 end
 
--- 整数百分比（第三属性/坦克属性使用）
+-- 整数百分比（副属性/第三属性/坦克属性统一使用）
 -- %.0f 自带舍入，避免 math.floor(v+0.5) 算术触犯 secret 禁忌
 local function FormatPercentInt(v)
     local ok, text = pcall(string.format, "%.0f%%", v)
@@ -327,9 +334,9 @@ local function GetVersatilityText()
     if IsSecret(ratingBonus) or IsSecret(auraBonus) then
         local estimatedVersa = EstimateVersaFromDescription()
         if type(estimatedVersa) == "number" then
-            return string.format("%.1f%%", estimatedVersa)
+            return string.format("%.0f%%", estimatedVersa)
         end
-        local ok, text = pcall(string.format, "%.1f%% + %.1f%%", ratingBonus, auraBonus)
+        local ok, text = pcall(string.format, "%.0f%% + %.0f%%", ratingBonus, auraBonus)
         if ok and text then return text end
         return "?"
     end
@@ -337,10 +344,10 @@ local function GetVersatilityText()
     if type(ratingBonus) == "number" and type(auraBonus) == "number" then
         local totalVersa = ratingBonus + auraBonus
         LearnVersaZeroValue(totalVersa)
-        return string.format("%.1f%%", totalVersa)
+        return string.format("%.0f%%", totalVersa)
     end
 
-    return FormatPercent(ratingBonus)
+    return FormatPercentInt(ratingBonus)
 end
 
 -- ------------------------------------------------------------
@@ -380,7 +387,7 @@ end
 -- ------------------------------------------------------------
 -- 行结构：{ label, valueText, colorKey }；条件行值为 0 时直接跳过
 local function Refresh()
-    if not statsText then return end
+    if not statsFrame then return end
 
     local lines = {}
 
@@ -388,10 +395,10 @@ local function Refresh()
     local primaryName, primaryValue = GetPrimaryStat()
     table.insert(lines, { primaryName, FormatInt(primaryValue), "primary" })
 
-    -- 2. 副属性（固定四项，始终显示）
-    table.insert(lines, { L["CS_Crit"],    FormatPercent(GetSpellCritChance()), "crit" })
-    table.insert(lines, { L["CS_Haste"],   FormatPercent(GetHaste()),           "haste" })
-    table.insert(lines, { L["CS_Mastery"], FormatPercent(GetMasteryEffect()),   "mastery" })
+    -- 2. 副属性（固定四项，始终显示，整数百分比）
+    table.insert(lines, { L["CS_Crit"],    FormatPercentInt(GetSpellCritChance()), "crit" })
+    table.insert(lines, { L["CS_Haste"],   FormatPercentInt(GetHaste()),           "haste" })
+    table.insert(lines, { L["CS_Mastery"], FormatPercentInt(GetMasteryEffect()),   "mastery" })
     table.insert(lines, { L["CS_Versa"],   GetVersatilityText(),                "vers" })
 
     -- 3. 第三属性（仅当非 0 时显示，整数百分比）
@@ -427,26 +434,30 @@ local function Refresh()
     -- 5. 移速（实时移动速度百分比，由 Ticker 驱动每秒刷新）
     table.insert(lines, { L["CS_MoveSpeed"], GetMoveSpeedText(), "movespeed" })
 
-    -- 拼接多行文本：标签按属性类型着色 + 数值白色
+    -- 双列拼接：名称列与数值列均左对齐（数值列锚定名称列右侧），数值与名称同色
     -- secret 字符串无法参与 table.concat，改用 SetFormattedText：
     -- 格式串只含普通字符串（颜色码同理），可能为 secret 的文本作为参数传入，由客户端渲染
-    local fmt = {}
-    local values = {}
+    local labelFmt, labelValues = {}, {}
+    local valueFmt, valueValues = {}, {}
     for _, line in ipairs(lines) do
-        table.insert(fmt, "|cff" .. (STAT_COLORS[line[3]] or "FFD100") .. "%s|r |cffffffff%s|r")
-        table.insert(values, line[1])
-        table.insert(values, line[2])
+        local color = STAT_COLORS[line[3]] or "FFD100"
+        table.insert(labelFmt, "|cff" .. color .. "%s|r")
+        table.insert(labelValues, line[1])
+        table.insert(valueFmt, "|cff" .. color .. "%s|r")
+        table.insert(valueValues, line[2])
     end
-    statsText:SetFormattedText(table.concat(fmt, "\n"), unpack(values))
+    statsFrame.labelText:SetFormattedText(table.concat(labelFmt, "\n"), unpack(labelValues))
+    statsFrame.valueText:SetFormattedText(table.concat(valueFmt, "\n"), unpack(valueValues))
 
-    -- 面板尺寸自适应文本（无边框背景，尺寸即文本尺寸）
-    -- 文本含 secret 时宽高可能也是 secret（不可算术），pcall 保护，失败保持原尺寸
-    local okSize, width, height = pcall(function()
-        return statsText:GetStringWidth(), statsText:GetStringHeight()
+    -- 面板尺寸自适应两列文本：宽 = 名称列宽 + 固定间距 + 数值列宽
+    -- （最长数值与名称间距固定）；文本含 secret 时宽高可能也是 secret
+    -- （不可算术），pcall 保护，失败保持原尺寸
+    pcall(function()
+        local labelWidth = statsFrame.labelText:GetStringWidth()
+        local labelHeight = statsFrame.labelText:GetStringHeight()
+        local valueWidth = statsFrame.valueText:GetStringWidth()
+        statsFrame:SetSize(labelWidth + VALUE_COLUMN_GAP + valueWidth, labelHeight)
     end)
-    if okSize and width and height then
-        statsFrame:SetSize(width, height)
-    end
 end
 
 -- ------------------------------------------------------------
@@ -462,6 +473,35 @@ local function ScheduleRefresh()
 end
 
 -- ------------------------------------------------------------
+-- GetOption: 读取模块设置项（DB 缺失时回退默认值）
+-- ------------------------------------------------------------
+local function GetOption(key, default)
+    local db = ns.db and ns.db.profile and ns.db.profile.characterStats
+    local value = db and db[key]
+    if value == nil then return default end
+    return value
+end
+
+-- 描边档位 → SetFont flags（0=无 1=细描边 2=粗描边）
+local OUTLINE_FLAGS = { [0] = "", [1] = "OUTLINE", [2] = "THICKOUTLINE" }
+
+-- ------------------------------------------------------------
+-- ApplyFontAndSpacing: 按设置项应用字号/描边/行间距（两列同步）
+-- ------------------------------------------------------------
+local function ApplyFontAndSpacing()
+    if not statsFrame or not statsFrame.fontPath then return end
+    local fontSize = GetOption("fontSize", 12)
+    -- 描边：0=无 1=细 2=粗；兼容旧版布尔设置（true 视为细描边）
+    local outlineValue = GetOption("outline", 0)
+    local outline = (outlineValue == true) and "OUTLINE" or (OUTLINE_FLAGS[outlineValue] or "")
+    local spacing = GetOption("lineSpacing", 2)
+    statsFrame.labelText:SetFont(statsFrame.fontPath, fontSize, outline)
+    statsFrame.valueText:SetFont(statsFrame.fontPath, fontSize, outline)
+    statsFrame.labelText:SetSpacing(spacing)
+    statsFrame.valueText:SetSpacing(spacing)
+end
+
+-- ------------------------------------------------------------
 -- CreateStatsFrame: 创建面板（懒创建，仅一次）
 -- ------------------------------------------------------------
 local function CreateStatsFrame()
@@ -471,10 +511,18 @@ local function CreateStatsFrame()
     -- 无边框无背景，不拦截鼠标（纯文本展示）
     f:EnableMouse(false)
 
-    f.text = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    f.text:SetPoint("TOPLEFT", 0, 0)
-    f.text:SetJustifyH("LEFT")
-    f.text:SetSpacing(2)
+    -- 名称列：锚定面板左上角，左对齐（面板左上角即锚点，向右下扩展）
+    f.labelText = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    f.labelText:SetPoint("TOPLEFT", 0, 0)
+    f.labelText:SetJustifyH("LEFT")
+
+    -- 数值列：锚定名称列右侧（保持固定间距），左对齐
+    f.valueText = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    f.valueText:SetPoint("TOPLEFT", f.labelText, "TOPRIGHT", VALUE_COLUMN_GAP, 0)
+    f.valueText:SetJustifyH("LEFT")
+
+    -- 缓存模板默认字体路径（字号/描边由设置项控制，经 SetFont 应用）
+    f.fontPath = f.labelText:GetFont()
 
     return f
 end
@@ -482,24 +530,25 @@ end
 -- ------------------------------------------------------------
 -- ApplyPosition: 按 DB 中的坐标定位（屏幕中心为原点）
 -- ------------------------------------------------------------
--- 面板左边缘锚定屏幕中心水平线、垂直中心对齐：
+-- 面板左上角锚定定位点，文本向右下扩展：
 -- posX/posY 为相对屏幕中心的偏移（左/下为负，右/上为正）
 local function ApplyPosition()
-    local db = ns.db and ns.db.profile and ns.db.profile.characterStats
     statsFrame:ClearAllPoints()
-    statsFrame:SetPoint("LEFT", UIParent, "CENTER",
-        (db and db.posX) or (20 - halfWidth),
-        (db and db.posY) or 0)
+    statsFrame:SetPoint("TOPLEFT", UIParent, "CENTER",
+        GetOption("posX", 20 - halfWidth),
+        GetOption("posY", 0))
 end
 
 -- ------------------------------------------------------------
--- OnOptionChanged: 设置面板坐标滑条变化时即时重定位
+-- OnOptionChanged: 设置项变化时即时生效（坐标重定位 / 字体与间距重设）
 -- ------------------------------------------------------------
 function module:OnOptionChanged(key, value)
+    if not statsFrame then return end
     if key == "posX" or key == "posY" then
-        if statsFrame then
-            ApplyPosition()
-        end
+        ApplyPosition()
+    elseif key == "fontSize" or key == "outline" or key == "lineSpacing" then
+        ApplyFontAndSpacing()
+        Refresh()
     end
 end
 
@@ -518,9 +567,9 @@ end
 function module:OnEnable()
     if not statsFrame then
         statsFrame = CreateStatsFrame()
-        statsText = statsFrame.text
         statsFrame:SetScript("OnEvent", OnEvent)
     end
+    ApplyFontAndSpacing()
     ApplyPosition()
     CacheClassColor()
     -- 事件集合对齐参考插件：

@@ -2,7 +2,9 @@
 ## Title: JustinForge
 ## Notes: 实用功能合集
 ## Author: JustinChia
-## Version: 1.0.0
+## Version: 12.10
+## IconTexture: Interface\AddOns\JustinForge\Media\icon.tga
+## Group: 开发工具
 ## SavedVariables: JustinForgeDB
 ## X-WoW-Version: 12.0.7 (兼容 12.1)
 

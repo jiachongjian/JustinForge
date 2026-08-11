@@ -48,8 +48,8 @@ local defaults = {
         -- 功能10：传送抽屉（宏由玩家手动创建，内容为 /click JFDrawerBtn1）
         teleportMacro   = { enabled = true },
         -- 功能11/14：鼠标提示扩展（合并大秘境信息+团本进度+人物提示增强）
-        -- titleFontSize/bodyFontSize/smallFontSize：0 = 暴雪默认字号
-        tooltipEnhance  = { enabled = true, titleFontSize = 0, bodyFontSize = 0, smallFontSize = 0 },
+        -- fontSize：提示框字号，0 = 暴雪默认
+        tooltipEnhance  = { enabled = true, fontSize = 0 },
         hideCrafter     = { enabled = true },  -- 功能12：隐藏制造业制造者
         quickFocus      = { enabled = true },  -- 功能13：快速设置焦点目标
     },
