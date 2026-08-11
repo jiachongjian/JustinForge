@@ -130,6 +130,10 @@ L["HideCrafter_Desc"] = "在装备鼠标提示中隐藏制造业装备上的绿�
 L["QuickFocus_Name"] = "快速设置焦点目标"
 L["QuickFocus_Desc"] = "按住 Shift 并用右键点击场景中的单位、默认头像/小队/团队框体或 EllesmereUI 单位框体，将其设为焦点。禁用后自动还原框体属性。不支持姓名板。"
 
+-- 模块15：成就对比界面报错修复
+L["AchievementUiFix_Name"] = "成就对比报错修复"
+L["AchievementUiFix_Desc"] = "修复暴雪成就界面在对比模式下点击「总结」分类时报错的问题。暴雪的 GetCategoryNumAchievements 只接受数字分类ID，却在对比状态条刷新时把字符串 \"summary\" 传入并崩溃；本模块加一层参数守卫将其忽略（数字ID包括-1哨兵原样透传，行为与默认一致）。"
+
 -- 模块10：传送抽屉宏
 L["TeleportMacro_Name"] = "传送抽屉宏"
 L["TeleportMacro_Desc"] = "手动创建一个宏，内容填入固定命令 /click JFDrawerBtn1（仅一行，不受宏数量与 255 字符限制影响），拖到动作条点击后会在鼠标位置展开原生风格的抽屉窗口，网格展示全部传送玩具与物品（最多支持 30 个位置），点击即用并自动收起。未学会的玩具显示为灰色。禁用模块后宏将失效。"

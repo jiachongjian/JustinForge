@@ -115,21 +115,25 @@ local pendingState = nil      -- 启用/禁用切换时处于战斗锁定，等�
 local TOGGLE_SNIPPET_FORMAT = [=[
 local root = self:GetFrameRef("Root")
 local id = self:GetID()
-if root:IsShown() and root:GetID() == id then
+if root:IsShown() and root:GetAttribute("drawer") == id then
     root:Hide()
-else
-    root:SetID(id)
-    for i = 1, %d do
-        local panel = self:GetFrameRef("Panel" .. i)
-        if panel then panel:Hide() end
-    end
-    local panel = self:GetFrameRef("Panel" .. id)
+    return
+end
+root:SetAttribute("drawer", id)
+for i = 1, %d do
+    local panel = self:GetFrameRef("Panel" .. i)
+    if panel then panel:Hide() end
+end
+local panel = self:GetFrameRef("Panel" .. id)
+if panel then
     local ui = self:GetFrameRef("UIParent")
-    local rx, ry = self:GetMousePosition()
-    if rx and ry then
-        panel:ClearAllPoints()
-        panel:SetPoint("BOTTOMLEFT", ui, "BOTTOMLEFT", ui:GetWidth() * rx - 16, ui:GetHeight() * ry + 20)
+    local x, y = GetCursorPosition()
+    if not (x and y) then
+        x = ui:GetWidth() / 2
+        y = ui:GetHeight() / 2
     end
+    panel:ClearAllPoints()
+    panel:SetPoint("BOTTOMLEFT", ui, "BOTTOMLEFT", x + 12, y + 12)
     panel:Show()
     root:Show()
 end

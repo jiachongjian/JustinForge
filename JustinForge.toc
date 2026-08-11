@@ -39,4 +39,5 @@ Modules\TeleportMacro.lua
 Modules\TooltipEnhance.lua
 Modules\HideCrafter.lua
 Modules\QuickFocus.lua
+Modules\AchievementUiFix.lua
 Core\Config.lua

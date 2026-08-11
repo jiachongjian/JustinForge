@@ -535,6 +535,30 @@ local function AlignNumericCols(tooltip)
     end
 end
 
+-- 强制追加行右列不换行：右列宽度取文本内容实际渲染宽度（须在 StyleFonts 之后调用）。
+-- 物品等级等整行较长（含全角括号）时，AddDoubleLine 预设的右列宽度偏小会导致内容换行，
+-- 这里收敛为内容真实宽度，保证单行右对齐显示。
+local function SingleLineAlign(tooltip, fromLine)
+    local name = tooltip:GetName()
+    if not name then return end
+    for i = fromLine, tooltip:NumLines() do
+        -- 已加入等宽数值列的行（地下城分数/团本进度）交给 AlignNumericCols，这里跳过
+        if not colAlignLines[i] then
+            local right = _G[name .. "TextRight" .. i]
+            if right then
+                pcall(function()
+                    local w = right:GetStringWidth()
+                    if w and w > 0 then
+                        right:SetWidth(w + 2)
+                    else
+                        right:SetWidth(0)
+                    end
+                end)
+            end
+        end
+    end
+end
+
 -- 全局字号/描边：注册到各内容类型的「后置回调」，确保在行构建完成、显示之前生效，
 -- 避免单纯 OnShow 时机导致默认字体闪现后被系统覆盖（物品/技能等）。
 -- 单位类型已由 OnTooltipUnit 单独处理，这里只覆盖其余类型。
@@ -1037,6 +1061,7 @@ local function OnTooltipUnit(tooltip, data)
     RightAlignLines(tooltip, appendStart)
     StyleFonts(tooltip)
     AlignNumericCols(tooltip)
+    SingleLineAlign(tooltip, appendStart)
 
     tooltip:Show()
 end

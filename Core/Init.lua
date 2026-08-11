@@ -52,6 +52,7 @@ local defaults = {
         tooltipEnhance  = { enabled = true, fontSize = 0 },
         hideCrafter     = { enabled = true },  -- 功能12：隐藏制造业制造者
         quickFocus      = { enabled = true },  -- 功能13：快速设置焦点目标
+        achievementUiFix = { enabled = true }, -- 功能15：成就对比界面报错修复
     },
 }
 
