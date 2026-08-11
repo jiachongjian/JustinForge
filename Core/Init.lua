@@ -51,6 +51,8 @@ local defaults = {
         mythicPlusTooltip = { enabled = true },
         hideCrafter     = { enabled = true },  -- 功能12：隐藏制造业制造者
         quickFocus      = { enabled = true },  -- 功能13：快速设置焦点目标
+        -- 功能14：鼠标提示团本进度（仅当前赛季，成就对比 API）
+        raidProgressTooltip = { enabled = true },
     },
 }
 

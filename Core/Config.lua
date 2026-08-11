@@ -57,13 +57,14 @@ ns.Config = {}
 -- 因此新增模块不修改本表也能出现在设置面板中
 local CATEGORY_LAYOUT = {
     { nameKey = "Category_General", keys = {
-        "macroEnhance", "teleportMacro", "mapCenter", "quickFocus",
-        "hideCrafter", "teleportUnequip", "chatHideLearn", "druidFlightForm",
+        "macroEnhance", "teleportMacro", "mapCenter", "merchantExpand",
+        "quickFocus", "hideCrafter", "teleportUnequip", "chatHideLearn",
+        "druidFlightForm",
     } },
-    { keys = { "merchantExpand" } },
     { keys = { "characterStats" } },
     { keys = { "chatChannelBar" } },
     { keys = { "mythicPlusTooltip" } },
+    { keys = { "raidProgressTooltip" } },
     { keys = { "lustMusic" } },
 }
 

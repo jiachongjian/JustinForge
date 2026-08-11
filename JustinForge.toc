@@ -34,6 +34,7 @@ Modules\ChatChannelBar.lua
 Modules\CharacterStats.lua
 Modules\TeleportMacro.lua
 Modules\MythicPlusTooltip.lua
+Modules\RaidProgressTooltip.lua
 Modules\HideCrafter.lua
 Modules\QuickFocus.lua
 Core\Config.lua

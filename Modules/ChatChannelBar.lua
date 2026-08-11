@@ -9,7 +9,7 @@
 --   已加入时退出频道。
 --   按钮外观使用暴雪原生方形按钮模板（UIPanelSquareButton）。
 --   （实现逻辑提取自 ExwindTools 的 ExTools.ChatChannelBar，去除其
---     编辑模式/吸附/每频道自定义等复杂设置，仅保留坐标定位）
+--     编辑模式/吸附/每频道自定义等复杂设置，仅保留坐标/大小/间距设置）
 --
 -- 定位方式：
 --   模块不提供拖动，位置由设置面板中的「水平位置 (X)」
@@ -31,10 +31,11 @@ local addonName, ns = ...
 local L = ns.L
 local Util = ns.Util
 
--- 固定样式（提取自 ExwindTools 默认值，不提供设置项）
-local FONT_SIZE = 16
-local BUTTON_SIZE = 30
-local BUTTON_PADDING = 3
+-- 默认样式（提取自 ExwindTools 默认值，可在设置面板中调整）
+-- 按钮文字大小跟随按钮大小：字号 = 按钮边长 × FONT_RATIO
+local DEFAULT_BUTTON_SIZE = 30
+local DEFAULT_SPACING = 3
+local FONT_RATIO = 16 / 30
 
 -- 屏幕尺寸在文件加载时即可获取，作为坐标滑条的上限
 local screenWidth = math.floor(UIParent:GetWidth() or 1920)
@@ -55,6 +56,8 @@ local module = ns.Module:Register({
     options = {
         { type = "slider", key = "posX", name = L["ChatChannelBar_PosX"], min = -halfWidth,  max = halfWidth,  step = 1, default = 46 - halfWidth },
         { type = "slider", key = "posY", name = L["ChatChannelBar_PosY"], min = -halfHeight, max = halfHeight, step = 1, default = 207 - halfHeight },
+        { type = "slider", key = "buttonSize", name = L["ChatChannelBar_ButtonSize"], min = 16, max = 60, step = 1, default = DEFAULT_BUTTON_SIZE },
+        { type = "slider", key = "spacing", name = L["ChatChannelBar_Spacing"], min = 0, max = 20, step = 1, default = DEFAULT_SPACING },
     },
 })
 
@@ -200,21 +203,15 @@ local function CreateBarFrame()
     -- 容器始终锁定（不接收鼠标），按钮自身独立接收点击
     barFrame:EnableMouse(false)
 
-    local count = #CHANNELS
-    local width = count * BUTTON_SIZE + (count + 1) * BUTTON_PADDING
-    barFrame:SetSize(width, BUTTON_SIZE + BUTTON_PADDING * 2)
-
     for i, channel in ipairs(CHANNELS) do
         -- 暴雪原生方形按钮模板（UI-SquareButton 系列贴图，自带按下/禁用/高亮态）
         local btn = CreateFrame("Button", "JFChatChannelBtn" .. i, barFrame, "UIPanelSquareButton")
-        btn:SetSize(BUTTON_SIZE, BUTTON_SIZE)
-        btn:SetPoint("LEFT", barFrame, "LEFT", BUTTON_PADDING + (i - 1) * (BUTTON_SIZE + BUTTON_PADDING), 0)
         btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 
         -- 频道文字作为覆盖层显示在按钮贴图之上
         local text = btn:CreateFontString(nil, "OVERLAY")
         text:SetPoint("CENTER")
-        text:SetFont(STANDARD_TEXT_FONT, FONT_SIZE, "OUTLINE")
+        text:SetJustifyH("CENTER")
         text:SetText(channel.name)
         text:SetTextColor(channel.r, channel.g, channel.b)
         btn.text = text
@@ -226,6 +223,30 @@ local function CreateBarFrame()
         end)
 
         buttons[i] = btn
+    end
+end
+
+-- ------------------------------------------------------------
+-- ApplyLayout: 按 DB 中的按钮大小/间距重排按钮
+-- ------------------------------------------------------------
+-- 文字大小跟随按钮大小（字号 = 边长 × FONT_RATIO）；
+-- 文字宽度限制在按钮内（SetWidth），防止字号偏大时溢出到相邻按钮
+local function ApplyLayout()
+    if not barFrame then return end
+    local db = ns.db.profile.chatChannelBar
+    local size = db.buttonSize or DEFAULT_BUTTON_SIZE
+    local spacing = db.spacing or DEFAULT_SPACING
+    local fontSize = math.floor(size * FONT_RATIO + 0.5)
+
+    local count = #buttons
+    barFrame:SetSize(count * size + (count + 1) * spacing, size + spacing * 2)
+
+    for i, btn in ipairs(buttons) do
+        btn:SetSize(size, size)
+        btn:ClearAllPoints()
+        btn:SetPoint("LEFT", barFrame, "LEFT", spacing + (i - 1) * (size + spacing), 0)
+        btn.text:SetFont(STANDARD_TEXT_FONT, fontSize, "OUTLINE")
+        btn.text:SetWidth(size - 4)
     end
 end
 
@@ -247,6 +268,8 @@ end
 function module:OnOptionChanged(key, value)
     if key == "posX" or key == "posY" then
         ApplyPosition()
+    elseif key == "buttonSize" or key == "spacing" then
+        ApplyLayout()
     end
 end
 
@@ -255,6 +278,7 @@ end
 -- ------------------------------------------------------------
 function module:OnEnable()
     CreateBarFrame()
+    ApplyLayout()
     ApplyPosition()
     barFrame:Show()
     Util:Debug("ChatChannelBar: 已显示")

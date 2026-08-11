@@ -13,10 +13,12 @@
 -- 实现原理：
 --   1. 创建隐藏安全按钮（SecureActionButtonTemplate），宏内容为
 --      /focus mouseover，再用 SetOverrideBindingClick 将
---      SHIFT-BUTTON2 映射到该按钮 —— 覆盖未被框体拦截的场景点击
---   2. 单位框体本身会拦截鼠标点击，需为其设置 shift-type2="focus"
---      安全属性（暴雪安全按钮模板原生支持 focus 动作类型；
---      按住 Shift 时优先于框体自身的右键菜单）
+--      SHIFT-BUTTON2 映射到该按钮 —— 覆盖绑定优先于框体点击分发，
+--      鼠标悬停单位框体时 mouseover 即为该框体单位，此为主路径
+--      （注意：按钮必须同时注册 AnyDown+AnyUp，见 EnsureButton 注释）
+--   2. 为单位框体设置 shift-type2="focus" 安全属性作为后备路径
+--      （暴雪安全模板原生支持 focus 动作类型；当覆盖绑定被其他
+--      插件抢占时，框体自身点击仍会触发焦点设置）
 --   3. 战斗中无法修改绑定/属性，延迟到 PLAYER_REGEN_ENABLED 处理
 --   4. 禁用时清除覆盖绑定并还原框体原属性值
 --
@@ -197,7 +199,13 @@ local function EnsureButton()
     focusButton = CreateFrame("Button", BUTTON_NAME, UIParent, "SecureActionButtonTemplate")
     focusButton:SetAttribute("type*", "macro")
     focusButton:SetAttribute("macrotext", "/focus mouseover")
-    focusButton:RegisterForClicks("AnyDown")
+    -- 关键：必须同时注册 Down 和 Up。12.0 的 SecureActionButton_OnClick
+    -- 依据 CVar ActionButtonUseKeyDown 决定动作时机：CVar 关（默认）时只有
+    -- 抬起(down=false)才执行，CVar 开时只有按下(down=true)才执行。
+    -- 只注册 AnyDown 时，默认 CVar 下按下事件不执行、抬起事件收不到，
+    -- 按钮永远不触发。同时注册两者则任意 CVar 下都恰好触发一次
+    -- （模板内部按 useOnKeyDown 互斥，不会重复执行）。
+    focusButton:RegisterForClicks("AnyDown", "AnyUp")
 end
 
 local function ApplyBinding()
@@ -229,7 +237,7 @@ end
 -- 事件处理：脱战后补设置/补清理，队伍变化时重扫紧凑框体
 -- ------------------------------------------------------------
 local eventFrame = CreateFrame("Frame")
-eventFrame:SetScript("OnEvent", function(_, event)
+eventFrame:SetScript("OnEvent", function(_, event, arg1)
     if event == "PLAYER_REGEN_ENABLED" then
         if module.enabled then
             -- 战斗中启用时延迟的初始化
@@ -257,6 +265,16 @@ eventFrame:SetScript("OnEvent", function(_, event)
         if module.enabled then
             ScanUnitFrames()
         end
+    elseif event == "PLAYER_LOGIN" then
+        -- 部分框体（如 EllesmereUI）在插件加载完毕后才创建，登录时再补扫一次
+        if module.enabled then
+            ScanUnitFrames()
+        end
+    elseif event == "ADDON_LOADED" then
+        -- EllesmereUI 可能在本插件之后加载，其框体创建后再补扫一次
+        if module.enabled and arg1 == "EllesmereUI" then
+            ScanUnitFrames()
+        end
     end
 end)
 
@@ -266,6 +284,8 @@ end)
 function module:OnEnable()
     eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
     eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+    eventFrame:RegisterEvent("PLAYER_LOGIN")
+    eventFrame:RegisterEvent("ADDON_LOADED")
     SetupAll()
     Util:Debug("QuickFocus: 已启用 Shift+右键快速焦点")
 end
@@ -276,6 +296,8 @@ end
 function module:OnDisable()
     setupPending = false
     eventFrame:UnregisterEvent("GROUP_ROSTER_UPDATE")
+    eventFrame:UnregisterEvent("PLAYER_LOGIN")
+    eventFrame:UnregisterEvent("ADDON_LOADED")
     if InCombatLockdown() then
         -- 战斗中无法清除绑定与框体属性，保留监听待脱战后处理
         eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")

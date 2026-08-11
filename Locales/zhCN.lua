@@ -53,20 +53,17 @@ L["MapCenter_Desc"] = "每次打开地图窗口时，自动将窗口定位到屏
 
 -- 模块3：商人窗口扩展
 L["MerchantExpand_Name"] = "商人窗口扩展"
-L["MerchantExpand_Desc"] = "将商人窗口加宽为多列布局（列数可调，高度不变），回购页同步扩展，并重新排列修理、出售垃圾、翻页按钮与货币栏。禁用后需重载界面以完全复原锚点。"
+L["MerchantExpand_Desc"] = "将商人窗口加宽为多列布局（列数可调，每列 5 行，高度不变），并重新排列修理、出售垃圾、翻页按钮与货币栏。禁用后需重载界面以完全复原锚点。"
 L["MerchantExpand_Columns"] = "物品显示列数"
-L["MerchantExpand_ColumnsTip"] = "商人窗口每行显示的物品列数（2-5）。商人页每页为 列数×5 个物品，回购页为 列数×6 个。"
+L["MerchantExpand_ColumnsTip"] = "商人窗口显示的物品列数（2/4/6/8/10，每列 5 行）。商人页每页为 列数×5 个物品，回购页保持原版 12 个。"
 
 -- 模块4：嗜血音效
 L["LustMusic_Name"] = "嗜血音效"
-L["LustMusic_Desc"] = "自身获得嗜血/英勇/时间扭曲等增益期间，循环播放 lust.ogg，增益消失后自动停止。队友开嗜血但你未获得增益时会聊天提示。需自行将 lust.ogg 放入插件目录（Interface\\AddOns\\JustinForge\\lust.ogg）或游戏 Interface 目录根部，并完全重启游戏。"
-L["LustMusic_MissedLust"] = "检测到队友开启了嗜血/英勇，但你未获得增益效果。"
+L["LustMusic_Desc"] = "嗜血/英勇/时间扭曲等效果施放时，播放 lust.ogg（40秒后自动停止），效果消失后停止。需自行将 lust.ogg 放入插件目录（Interface\\AddOns\\JustinForge\\lust.ogg）或游戏 Interface 目录根部，并完全重启游戏。嗜血CD就绪时不播放提醒音效。"
 L["LustMusic_Play"] = "测试音乐"
-L["LustMusic_PlayTip"] = "循环播放 lust.ogg，用于验证音频文件是否正确安装；再次点击「暂停」停止。"
+L["LustMusic_PlayTip"] = "播放 lust.ogg，用于验证音频文件是否正确安装。"
 L["LustMusic_Stop"] = "停止测试音乐"
-L["LustMusic_StopTip"] = "停止测试播放的 lust.ogg。"
-L["LustMusic_TestSuccess"] = "测试播放成功，音频文件正常。"
-L["LustMusic_TestFailed"] = "测试播放失败！请确认 lust.ogg 已放入插件目录（Interface\\AddOns\\JustinForge\\lust.ogg）或游戏 Interface 目录根部，并完全重启游戏（/reload 无效）。"
+L["LustMusic_StopTip"] = "停止当前正在播放的音频。"
 L["LustMusic_FileMissing"] = "未找到音频文件 lust.ogg，无法播放音乐。请将其放入插件目录（Interface\\AddOns\\JustinForge\\lust.ogg）或游戏 Interface 目录根部，并完全重启游戏（/reload 无效）。"
 
 -- 模块5：德鲁伊自动取消旅行形态
@@ -87,6 +84,8 @@ L["ChatChannelBar_Name"] = "聊天频道条"
 L["ChatChannelBar_Desc"] = "在屏幕上显示一排频道按钮（说/喊/队/会/副/团/世/骰/确/倒），左键点击切换到对应聊天频道或执行指令；右键点击「世」可加入/退出大脚世界频道。通过下方坐标滑条调整位置（屏幕中心为原点）。"
 L["ChatChannelBar_PosX"] = "快捷栏水平位置 (X)"
 L["ChatChannelBar_PosY"] = "快捷栏垂直位置 (Y)"
+L["ChatChannelBar_ButtonSize"] = "按钮大小"
+L["ChatChannelBar_Spacing"] = "按钮间距"
 L["ChatChannelBar_NoChannel"] = "未加入大脚世界频道，可右键点击「世」按钮加入: "
 L["ChatChannelBar_Joined"] = "已加入频道: 大脚世界频道"
 L["ChatChannelBar_Left"] = "已退出频道: 大脚世界频道"
@@ -95,7 +94,7 @@ L["ChatChannelBar_OpenFailed"] = "聊天框打开失败: "
 
 -- 模块9：人物属性面板
 L["CharacterStats_Name"] = "人物属性面板"
-L["CharacterStats_Desc"] = "在屏幕上常态显示人物属性面板（无边框背景），依次为：主属性、副属性（暴击/急速/精通/全能）、第三属性（吸血/闪避/加速，非0时显示）、坦克属性（躲闪/招架/格挡，仅坦克专精显示）、移速。通过下方坐标滑条调整位置（屏幕中心为原点）。"
+L["CharacterStats_Desc"] = "在屏幕上常态显示人物属性面板（无边框背景），依次为：主属性、副属性（暴击/急速/精通/全能）、第三属性（吸血/闪避/加速，非0时显示）、坦克属性（躲闪/招架/格挡，仅坦克专精显示）、移速（实时移动速度百分比，每秒刷新）。通过下方坐标滑条调整位置（屏幕中心为原点）。"
 L["CharacterStats_PosX"] = "面板水平位置 (X)"
 L["CharacterStats_PosY"] = "面板垂直位置 (Y)"
 L["CS_Primary"] = "主属性"
@@ -120,6 +119,11 @@ L["MythicPlusTooltip_Desc"] = "鼠标指向满级玩家时，在提示框中显�
 L["MPT_Header"] = "大秘境"
 L["MPT_Score"] = "评分"
 L["MPT_Keystone"] = "钥石"
+
+-- 模块14：鼠标提示团本进度
+L["RaidProgressTooltip_Name"] = "鼠标提示团本进度"
+L["RaidProgressTooltip_Desc"] = "鼠标指向满级玩家时，在提示框中显示其当前赛季团本进度（虚影尖塔/奎尔丹纳斯/梦境裂隙，按 史诗→英雄→普通→随机 显示有击杀的难度，格式 M 6/6）。自己直接读取角色统计；其他玩家通过成就对比获取，受观察距离限制，战斗中不刷新。"
+L["RPT_Header"] = "团本进度"
 
 -- 模块12：隐藏制造业制造者
 L["HideCrafter_Name"] = "隐藏制造业制造者"
