@@ -475,7 +475,10 @@ local function GetRightInset(tooltip)
     local left1 = name and _G[name .. "TextLeft1"]
     if left1 then
         local ok, _, _, relPoint, x = pcall(left1.GetPoint, left1, 1)
-        if ok and relPoint and (relPoint == "LEFT" or relPoint == "TOPLEFT") and x then
+        -- 12.0: 锚点信息可能是 secret 值（如世界光标提示），pcall 无法拦住后续比较，须先判 secret
+        if ok and relPoint and x
+            and not (issecretvalue and (issecretvalue(relPoint) or issecretvalue(x)))
+            and (relPoint == "LEFT" or relPoint == "TOPLEFT") then
             local inset = math.abs(x)
             if inset > 0 and inset < 40 then
                 return inset
