@@ -55,15 +55,6 @@ L["MapCenter_Desc"] = "每次打开地图窗口时，自动将窗口定位到屏
 L["MerchantExpand_Name"] = "商人窗口扩展"
 L["MerchantExpand_Desc"] = "将商人窗口加宽为固定的 4 列布局（每列 5 行，高度不变），并重新排列修理、出售垃圾、翻页按钮与货币栏。禁用后需重载界面以完全复原锚点。"
 
--- 模块4：嗜血音效
-L["LustMusic_Name"] = "嗜血音效"
-L["LustMusic_Desc"] = "嗜血/英勇/时间扭曲等效果施放时，播放 lust.ogg（40秒后自动停止），效果消失后停止。需自行将 lust.ogg 放入插件目录（Interface\\AddOns\\JustinForge\\lust.ogg）或游戏 Interface 目录根部，并完全重启游戏。嗜血CD就绪时不播放提醒音效。"
-L["LustMusic_Play"] = "测试音乐"
-L["LustMusic_PlayTip"] = "播放 lust.ogg，用于验证音频文件是否正确安装。"
-L["LustMusic_Stop"] = "停止测试音乐"
-L["LustMusic_StopTip"] = "停止当前正在播放的音频。"
-L["LustMusic_FileMissing"] = "未找到音频文件 lust.ogg，无法播放音乐。请将其放入插件目录（Interface\\AddOns\\JustinForge\\lust.ogg）或游戏 Interface 目录根部，并完全重启游戏（/reload 无效）。"
-
 -- 模块5：德鲁伊自动取消旅行形态
 L["DruidFlightForm_Name"] = "德鲁伊自动取消旅行形态"
 L["DruidFlightForm_Desc"] = "在旅行形态下进入可飞行区域时，自动取消变形，重新施放旅行形态即可切换为飞行形态。"
@@ -96,6 +87,7 @@ L["CharacterStats_PosX"] = "面板水平位置 (X)"
 L["CharacterStats_PosY"] = "面板垂直位置 (Y)"
 L["CharacterStats_FontSize"] = "字号"
 L["CharacterStats_LineSpacing"] = "行间距"
+L["CharacterStats_ShowTertiary"] = "显示第三属性（吸血/闪避/加速）"
 L["CS_Primary"] = "主属性"
 L["CS_Strength"] = "力量"
 L["CS_Agility"] = "敏捷"
@@ -128,7 +120,7 @@ L["HideCrafter_Desc"] = "在装备鼠标提示中隐藏制造业装备上的绿�
 
 -- 模块13：快速设置焦点目标
 L["QuickFocus_Name"] = "快速设置焦点目标"
-L["QuickFocus_Desc"] = "按住 Shift 并用右键点击场景中的单位、默认头像/小队/团队框体或 EllesmereUI 单位框体，将其设为焦点。禁用后自动还原框体属性。不支持姓名板。"
+L["QuickFocus_Desc"] = "按住 Shift 并用右键点击场景中的单位、暴雪默认头像/小队/团队框体，或 EllesmereUI 单位框体/小队/团队框体，将其设为焦点。自动适配 EllesmereUI 的框体来源设置。禁用后自动还原框体属性。不支持姓名板。"
 
 -- 模块15：成就对比界面报错修复
 L["AchievementUiFix_Name"] = "成就对比报错修复"

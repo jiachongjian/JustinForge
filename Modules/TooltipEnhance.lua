@@ -84,6 +84,13 @@ local RAID_CLASS_COLORS = RAID_CLASS_COLORS
 -- 12.x 秘密值检查
 local issecretvalue = _G.issecretvalue
 
+-- secret boolean 防护：秘密布尔值禁止做任何布尔判断（not/and/or/if），
+-- 一律先经本函数转为 nil（按"未知"处理），调用方用 == true / == false 显式比较
+local function SafeBool(v)
+    if issecretvalue and issecretvalue(v) then return nil end
+    return v
+end
+
 -- 暴雪数字格式（千分位分隔），失败回退普通字符串
 local function BreakUp(v)
     local ok, res = pcall(BreakUpLargeNumbers, v)
@@ -346,7 +353,7 @@ end
 -- 物品等级与套装数
 -- ============================================================
 local function GetUnitItemLevel(unit)
-    if UnitIsUnit(unit, "player") then
+    if SafeBool(UnitIsUnit(unit, "player")) == true then
         local ok, _, equipped = pcall(GetAverageItemLevel)
         if ok and equipped then
             if issecretvalue and issecretvalue(equipped) then return nil end
@@ -610,11 +617,12 @@ local function ModifyNameLine(tooltip, unit)
     local okAFK, isAFK = pcall(UnitIsAFK, unit)
     local okDND, isDND = pcall(UnitIsDND, unit)
     local okConn, isConn = pcall(UnitIsConnected, unit)
-    if okConn and not isConn then
+    isAFK, isDND, isConn = SafeBool(isAFK), SafeBool(isDND), SafeBool(isConn)
+    if okConn and isConn == false then
         nameText = nameText .. " |cffff0000<离线>|r"
-    elseif okAFK and isAFK then
+    elseif okAFK and isAFK == true then
         nameText = nameText .. " |cffff0000<离开>|r"
-    elseif okDND and isDND then
+    elseif okDND and isDND == true then
         nameText = nameText .. " |cffff0000<忙碌>|r"
     end
 
@@ -767,7 +775,7 @@ local function AddSummaryLines(tooltip, unit, summary)
 
     -- 史诗钥匙：仅自己（背包有钥匙时），史诗紫色「地下城名称（层数）」
     local keyText
-    if UnitIsUnit(unit, "player") then
+    if SafeBool(UnitIsUnit(unit, "player")) == true then
         local okKey, text = pcall(function()
             local kLevel = C_MythicPlus_GetOwnedKeystoneLevel()
             local kMap = C_MythicPlus_GetOwnedKeystoneChallengeMapID()
@@ -944,13 +952,14 @@ end
 local function AddTargetOfTarget(tooltip, unit)
     local targetUnit = unit.."target"
     local okExists, exists = pcall(UnitExists, targetUnit)
-    if not okExists or not exists then return end
+    if not okExists or SafeBool(exists) ~= true then return end
 
     local okIsPlayer, isPlayerTarget = pcall(UnitIsPlayer, targetUnit)
+    isPlayerTarget = SafeBool(isPlayerTarget)
 
     local targetText
     local okIsUnit, isPlayer = pcall(UnitIsUnit, targetUnit, "player")
-    if okIsUnit and isPlayer then
+    if okIsUnit and SafeBool(isPlayer) == true then
         -- 目标是玩家自己：>>你<<，用玩家职业染色
         local _, _, playerClass = pcall(UnitClass, "player")
         local hex = "ffffff"
@@ -988,7 +997,7 @@ progressFrame:SetScript("OnEvent", function(_, event, eventGUID)
     ClearAchievementComparisonUnit()
 
     -- 鼠标仍指向该玩家时刷新提示框
-    if UnitExists("mouseover") then
+    if SafeBool(UnitExists("mouseover")) == true then
         local ok, same = pcall(function()
             local g = UnitGUID("mouseover")
             if not g or (issecretvalue and issecretvalue(g)) then return false end
@@ -1016,7 +1025,7 @@ local function OnTooltipUnit(tooltip, data)
         _, unit = tooltip:GetUnit()
     end
     if not unit or (issecretvalue and issecretvalue(unit)) then return end
-    if not UnitIsPlayer(unit) then return end
+    if SafeBool(UnitIsPlayer(unit)) ~= true then return end
 
     -- 重置折叠行与等宽列记录
     collapsedLines = {}
@@ -1048,7 +1057,7 @@ local function OnTooltipUnit(tooltip, data)
             local entry = raidCache[guid]
             if entry and GetTime() - entry.updated < RAID_CACHE_TTL then
                 AddRaidLines(tooltip, guid)
-            elseif UnitIsUnit(unit, "player") then
+            elseif SafeBool(UnitIsUnit(unit, "player")) == true then
                 CollectRaidProgress(guid, true)
                 AddRaidLines(tooltip, guid)
             else

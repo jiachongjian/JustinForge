@@ -29,7 +29,6 @@ Core\Module.lua
 Modules\TeleportUnequip.lua
 Modules\MapCenter.lua
 Modules\MerchantExpand.lua
-Modules\LustMusic.lua
 Modules\DruidFlightForm.lua
 Modules\ChatHideLearn.lua
 Modules\MacroEnhance.lua

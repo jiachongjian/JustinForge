@@ -53,6 +53,7 @@ local module = ns.Module:Register({
         { type = "slider", key = "posY", name = L["CharacterStats_PosY"], min = -halfHeight, max = halfHeight, step = 1, default = 0 },
         { type = "slider", key = "fontSize", name = L["CharacterStats_FontSize"], min = 8, max = 24, step = 1, default = 12 },
         { type = "slider", key = "lineSpacing", name = L["CharacterStats_LineSpacing"], min = 0, max = 12, step = 1, default = 2 },
+        { type = "checkbox", key = "showTertiary", name = L["CharacterStats_ShowTertiary"], default = true },
     },
 })
 
@@ -392,18 +393,23 @@ local function Refresh()
     table.insert(lines, { L["CS_Mastery"], FormatPercentInt(GetMasteryEffect()),   "mastery" })
     table.insert(lines, { L["CS_Versa"],   GetVersatilityText(),                "vers" })
 
-    -- 3. 第三属性（仅当非 0 时显示，整数百分比）
-    local leech = GetLifesteal()
-    if IsPositive(leech) then
-        table.insert(lines, { L["CS_Leech"], FormatPercentInt(leech), "leech" })
-    end
-    local avoidance = GetAvoidance()
-    if IsPositive(avoidance) then
-        table.insert(lines, { L["CS_Avoidance"], FormatPercentInt(avoidance), "avoidance" })
-    end
-    local speed = GetSpeed()
-    if IsPositive(speed) then
-        table.insert(lines, { L["CS_Speed"], FormatPercentInt(speed), "speed" })
+    -- 3. 第三属性（可在设置中关闭；仅当非 0 时显示，整数百分比）
+    -- 注意此处不能调用下方才声明的 GetOption（Lua 局部变量前置可见性），
+    -- 直接读取 DB：键缺失或为 false 以外的值时视为开启（默认 true）
+    local db = ns.db and ns.db.profile and ns.db.profile.characterStats
+    if not db or db.showTertiary ~= false then
+        local leech = GetLifesteal()
+        if IsPositive(leech) then
+            table.insert(lines, { L["CS_Leech"], FormatPercentInt(leech), "leech" })
+        end
+        local avoidance = GetAvoidance()
+        if IsPositive(avoidance) then
+            table.insert(lines, { L["CS_Avoidance"], FormatPercentInt(avoidance), "avoidance" })
+        end
+        local speed = GetSpeed()
+        if IsPositive(speed) then
+            table.insert(lines, { L["CS_Speed"], FormatPercentInt(speed), "speed" })
+        end
     end
 
     -- 4. 坦克属性（仅坦克专精且非 0 时显示，整数百分比）
@@ -520,6 +526,8 @@ function module:OnOptionChanged(key, value)
         ApplyPosition()
     elseif key == "fontSize" or key == "lineSpacing" then
         ApplyFontAndSpacing()
+        Refresh()
+    elseif key == "showTertiary" then
         Refresh()
     end
 end
