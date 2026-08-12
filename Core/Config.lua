@@ -61,7 +61,7 @@ ns.Config = {}
 -- 因此新增模块不修改本表也能出现在设置面板中
 local CATEGORY_LAYOUT = {
     { nameKey = "Category_General", keys = {
-        "macroEnhance", "teleportMacro", "mapCenter", "merchantExpand",
+        "macroEnhance", "mapCenter", "merchantExpand",
         "quickFocus", "hideCrafter", "teleportUnequip", "chatHideLearn",
         "druidFlightForm",
     } },

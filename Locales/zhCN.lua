@@ -133,7 +133,3 @@ L["QuickFocus_Desc"] = "按住 Shift 并用右键点击场景中的单位、默�
 -- 模块15：成就对比界面报错修复
 L["AchievementUiFix_Name"] = "成就对比报错修复"
 L["AchievementUiFix_Desc"] = "修复暴雪成就界面在对比模式下点击「总结」分类时报错的问题。暴雪的 GetCategoryNumAchievements 只接受数字分类ID，却在对比状态条刷新时把字符串 \"summary\" 传入并崩溃；本模块加一层参数守卫将其忽略（数字ID包括-1哨兵原样透传，行为与默认一致）。"
-
--- 模块10：传送抽屉宏
-L["TeleportMacro_Name"] = "传送抽屉宏"
-L["TeleportMacro_Desc"] = "手动创建一个宏，内容填入固定命令 /click JFDrawerBtn1（仅一行，不受宏数量与 255 字符限制影响），拖到动作条点击后会在鼠标位置展开原生风格的抽屉窗口，网格展示全部传送玩具与物品（最多支持 30 个位置），点击即用并自动收起。未学会的玩具显示为灰色。禁用模块后宏将失效。"
