@@ -9,13 +9,11 @@
 --     3. 公会行：公会名称~会阶名称，除 ~ 号外均为公会绿色
 --     4. 等级行：隐藏"等级""玩家"，数字为系统黄色；种族后插入专精（职业色），
 --        并折叠原独立的"专精 职业"行
---     5. 阵营：不显示文字（折叠该行），右上角显示镂空风格阵营徽记；
---        非玩家单位不显示徽记
---     6. 大秘境分数、史诗钥匙（仅自己背包有钥匙时显示，史诗紫色）、
+--     5. 大秘境分数、史诗钥匙（仅自己背包有钥匙时显示，史诗紫色）、
 --        物品等级（套装数 n/5 为 #C952F4 紫色）
---     7. 每个地下城的最佳层数与分数（带地下城图标，层数右对齐）
---     8. 当前赛季团本进度（带团本图标，中文难度，右对齐）
---     9. 目标的目标（>>姓名/你<<，职业染色）
+--     6. 每个地下城的最佳层数与分数（带地下城图标，层数右对齐）
+--     7. 当前赛季团本进度（带团本图标，中文难度，右对齐）
+--     8. 目标的目标（>>姓名/你<<，职业染色）
 --
 -- 实现原理：
 --   1. TooltipDataProcessor.AddTooltipPostCall(Unit) 回调中取鼠标单位
@@ -58,7 +56,6 @@ local InCombatLockdown = InCombatLockdown
 local SetAchievementComparisonUnit = SetAchievementComparisonUnit
 local UnitClass = UnitClass
 local UnitExists = UnitExists
-local UnitFactionGroup = UnitFactionGroup
 local UnitGUID = UnitGUID
 local UnitIsAFK = UnitIsAFK
 local UnitIsConnected = UnitIsConnected
@@ -106,18 +103,6 @@ local RAID_CACHE_TTL = 120
 
 -- 暴雪默认标题黄色
 local TITLE_COLOR = { r = 1, g = 0.82, b = 0 }
-
--- 阵营徽记（镂空风格，透明背景）
-local FACTION_LOGO = {
-    Alliance = "Interface\\TargetingFrame\\UI-PVP-Alliance",
-    Horde    = "Interface\\TargetingFrame\\UI-PVP-Horde",
-}
-
--- 阵营标示配色（部落红 / 联盟蓝）
-local FACTION_LOGO_COLOR = {
-    Alliance = { 0.15, 0.4, 1.0 },
-    Horde    = { 1.0, 0.15, 0.1 },
-}
 
 -- ============================================================
 -- 模块注册
@@ -167,44 +152,31 @@ local DIFFICULTIES = {
 }
 
 -- ============================================================
--- 当前赛季团本数据（「至暗之夜」第一赛季，12.0）
+-- 当前赛季团本数据（「至暗之夜」第二赛季，12.1）
+-- 击杀统计 ID 来源：wowhead 角色统计（已逐个核对）；
+-- lfgID / 图标来源：wago.tools LFGDungeons（普通难度条目）
 -- ============================================================
 local CURRENT_SEASON_RAIDS = {
-    { -- 虚影尖塔（6 Boss）
-        lfgID = 3094, name = "虚影尖塔", tex = 7507136,
+    { -- 烈毒之渊（8 Boss：奈克扎利/陵墓哨兵/失落的探险者/恶毒者瓦什尼克/斯佐拉克/双生毒牙/盘卷祭坛/乌拉特克）
+        lfgID = 3313, name = "烈毒之渊", tex = 8039391,
         stats = {
-            { 61288, 61292, 61284, 61280, 61296, 61276 },
-            { 61297, 61281, 61277, 61293, 61289, 61285 },
-            { 61278, 61290, 61298, 61282, 61294, 61286 },
-            { 61279, 61295, 61299, 61287, 61283, 61291 },
+            { 63533, 63537, 63541, 63547, 63548, 63549, 63550, 63551 },
+            { 63534, 63538, 63552, 63555, 63558, 63561, 63564, 63567 },
+            { 63535, 63539, 63553, 63556, 63559, 63562, 63565, 63568 },
+            { 63536, 63540, 63554, 63557, 63560, 63563, 63566, 63569 },
         },
     },
-    { -- 进军奎尔丹纳斯（2 Boss）
-        lfgID = 3095, name = "奎尔丹纳斯", tex = 7480127,
+    { -- 潮缚石窟（世界首领巢穴，1 Boss：尼姆瑞莎·唤波者）
+        -- 无随机团队难度，第 1 槽位使用「世界」版本统计（通过团队查找器排队击杀计入此项）
+        lfgID = 3277, name = "潮缚石窟", tex = 8164250,
         stats = {
-            { 61300, 61304 },
-            { 61305, 61301 },
-            { 61302, 61306 },
-            { 61307, 61303 },
-        },
-    },
-    { -- 梦境裂隙（1 Boss）
-        lfgID = 3165, name = "梦境裂隙", tex = 7570496,
-        stats = {
-            { 61474 },
-            { 61475 },
-            { 61476 },
-            { 61477 },
+            { 63613 },
+            { 63614 },
+            { 63615 },
+            { 63616 },
         },
     },
 }
-
--- ============================================================
--- 阵营徽记纹理（创建一次复用）
--- ============================================================
-local factionLogo = GameTooltip:CreateTexture(nil, "OVERLAY", nil, 7)
-factionLogo:SetSize(40, 40)
-factionLogo:Hide()
 
 -- ============================================================
 -- 辅助函数
@@ -257,7 +229,6 @@ GameTooltip:HookScript("OnTooltipCleared", function()
     RestoreAllFonts()
 end)
 GameTooltip:HookScript("OnHide", function()
-    factionLogo:Hide()
     collapsedLines = {}
     colAlignLines = {}
     RestoreAllFonts()
@@ -722,52 +693,6 @@ local function ModifyLevelAndSpecLine(tooltip, unit)
 end
 
 -- ============================================================
--- 人物提示框修改：阵营行（折叠文字，显示镂空徽记）
--- ============================================================
-local function ModifyFactionLine(tooltip, unit)
-    local ok, englishFaction = pcall(UnitFactionGroup, unit)
-    if not ok or not englishFaction then
-        factionLogo:Hide()
-        return
-    end
-    if issecretvalue and issecretvalue(englishFaction) then
-        factionLogo:Hide()
-        return
-    end
-
-    -- 折叠阵营文字行
-    for i = 2, tooltip:NumLines() do
-        local left = _G["GameTooltipTextLeft"..i]
-        if left then
-            local text = left:GetText()
-            if text and (text == "联盟" or text == "部落" or
-                         text:find("^联盟") or text:find("^部落") or
-                         text:find("^Alliance") or text:find("^Horde")) then
-                CollapseLine(tooltip, i)
-                break
-            end
-        end
-    end
-
-    -- 仅联盟/部落显示徽记（中立如未选阵营熊猫人不显示）
-    local tex = FACTION_LOGO[englishFaction]
-    if tex then
-        factionLogo:SetTexture(tex)
-        local c = FACTION_LOGO_COLOR[englishFaction]
-        if c then
-            factionLogo:SetVertexColor(c[1], c[2], c[3])
-        else
-            factionLogo:SetVertexColor(1, 1, 1)
-        end
-        factionLogo:ClearAllPoints()
-        factionLogo:SetPoint("TOPRIGHT", GameTooltip, "TOPRIGHT", -10, -10)
-        factionLogo:Show()
-    else
-        factionLogo:Hide()
-    end
-end
-
--- ============================================================
 -- 追加：大秘境分数 / 史诗钥匙 / 物品等级
 -- ============================================================
 local function AddSummaryLines(tooltip, unit, summary)
@@ -1015,8 +940,6 @@ end)
 local function OnTooltipUnit(tooltip, data)
     if not module.enabled then return end
     if tooltip ~= GameTooltip then return end
-    -- 非玩家单位也可能触发本回调，先隐藏徽记（防止从玩家移到 NPC 时残留）
-    factionLogo:Hide()
 
     local unit
     if data and data.unit then
@@ -1035,7 +958,6 @@ local function OnTooltipUnit(tooltip, data)
     ModifyNameLine(tooltip, unit)
     ModifyGuildLine(tooltip, unit)
     ModifyLevelAndSpecLine(tooltip, unit)
-    ModifyFactionLine(tooltip, unit)
 
     -- 记录追加区起点（阶段2新行），用于统一右对齐
     local appendStart = tooltip:NumLines() + 1
@@ -1097,7 +1019,6 @@ function module:OnDisable()
     progressFrame:UnregisterAllEvents()
     ClearAchievementComparisonUnit()
     pendingGUIDs = {}
-    factionLogo:Hide()
     RestoreAllFonts()
     Util:Debug("TooltipEnhance: 已禁用")
 end
