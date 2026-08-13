@@ -15,7 +15,7 @@ ns.L = ns.L or {}
 local L = ns.L
 
 -- 插件整体标题和描述（用于设置面板分类名称）
-L["AddonTitle"] = "AddonJustin"
+L["AddonTitle"] = "BigAddon"
 L["AddonDesc"] = "一系列独立的实用功能，可单独启用或禁用。"
 
 -- ---- 设置面板分组标题 ----
