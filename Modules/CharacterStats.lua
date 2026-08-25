@@ -7,7 +7,8 @@
 --     1. 主属性（力量/敏捷/智力，按当前专精自动识别）
 --     2. 副属性（暴击 / 急速 / 精通 / 全能，整数百分比）
 --     3. 第三属性（吸血 / 闪避 / 加速，仅当非 0 时显示，整数百分比）
---     4. 坦克属性（躲闪 / 招架 / 格挡，仅坦克专精且非 0 时显示，整数百分比）
+--     4. 坦克属性（躲闪 / 招架 / 格挡 / 醉拳，可在设置中关闭；仅坦克专精显示，
+--        且只显示当前专精依赖的属性，如熊德只显示躲闪、酒仙显示躲闪+醉拳）
 --     5. 移速（实时移动速度百分比，100% = 基础跑步速度，每秒刷新）
 --   面板左上角为锚点、向右下扩展，不支持拖动，
 --   位置由设置面板中的坐标滑条决定（屏幕中心为原点）。
@@ -54,6 +55,7 @@ local module = ns.Module:Register({
         { type = "slider", key = "fontSize", name = L["CharacterStats_FontSize"], min = 8, max = 24, step = 1, default = 12 },
         { type = "slider", key = "lineSpacing", name = L["CharacterStats_LineSpacing"], min = 0, max = 12, step = 1, default = 2 },
         { type = "checkbox", key = "showTertiary", name = L["CharacterStats_ShowTertiary"], default = true },
+        { type = "checkbox", key = "showTank", name = L["CharacterStats_ShowTank"], default = true },
     },
 })
 
@@ -98,6 +100,23 @@ local SPEC_INFO = {
     [1467] = { primary = 4 }, [1468] = { primary = 4 }, [1473] = { primary = 4 },
 }
 
+-- ------------------------------------------------------------
+-- 坦克专精依赖的属性表：specID → 显示顺序的属性列表
+-- ------------------------------------------------------------
+-- 只显示当前坦克专精实际依赖的减伤属性（如熊德不能招架/格挡，
+-- 即使有数值也不显示；血DK 无盾不能格挡；酒仙额外显示醉拳）
+local TANK_STATS = {
+    [66]  = { "parry", "block" },   -- 防护骑士：招架+格挡（持盾）
+    [73]  = { "parry", "block" },   -- 防护战士：招架+格挡（持盾）
+    [250] = { "parry" },            -- 鲜血死亡骑士：仅招架（无盾不能格挡）
+    [104] = { "dodge" },            -- 守护德鲁伊：仅躲闪（不能招架/格挡）
+    [268] = { "dodge", "stagger" }, -- 酒仙武僧：躲闪+醉拳
+    [581] = { "dodge", "parry" },   -- 复仇恶魔猎手：躲闪+招架（暴击提升招架）
+}
+
+-- 表外坦克专精（新专精未收录）的回退显示列表
+local DEFAULT_TANK_STATS = { "dodge", "parry", "block" }
+
 -- 主属性 UnitStat 索引 → 本地化标签键
 local PRIMARY_LABEL_KEY = {
     [1] = "CS_Strength",
@@ -123,6 +142,7 @@ local STAT_COLORS = {
     dodge     = "D9D9A6", -- 米黄
     parry     = "A6D9D9", -- 淡青
     block     = "BFBFBF", -- 银灰
+    stagger   = "E6CC80", -- 淡金（醉拳）
     movespeed = "5FE8D4", -- 亮青
     primary   = "FFD100", -- 占位金，OnEnable 时替换为职业色
 }
@@ -375,6 +395,22 @@ local function GetMoveSpeedText()
 end
 
 -- ------------------------------------------------------------
+-- 坦克属性取值函数表：属性键 → (标签, 数值)
+-- ------------------------------------------------------------
+-- 醉拳取 C_PaperDollInfo.GetStaggerPercentage（8.0 加入，返回醉拳化解百分比）；
+-- 该 API 标注 AllowedWhenUntainted，12.0 下可能返回 secret 值，
+-- 与躲闪/招架/格挡一样经 IsPositive/FormatPercentInt 安全处理
+local TANK_STAT_FUNCS = {
+    dodge = function() return L["CS_Dodge"], GetDodgeChance() end,
+    parry = function() return L["CS_Parry"], GetParryChance() end,
+    block = function() return L["CS_Block"], GetBlockChance() end,
+    stagger = function()
+        if not (C_PaperDollInfo and C_PaperDollInfo.GetStaggerPercentage) then return nil end
+        return L["CS_Stagger"], C_PaperDollInfo.GetStaggerPercentage("player")
+    end,
+}
+
+-- ------------------------------------------------------------
 -- Refresh: 重建全部属性文本
 -- ------------------------------------------------------------
 -- 行结构：{ label, valueText, colorKey }；条件行值为 0 时直接跳过
@@ -412,19 +448,15 @@ local function Refresh()
         end
     end
 
-    -- 4. 坦克属性（仅坦克专精且非 0 时显示，整数百分比）
-    if IsTankSpec() then
-        local dodge = GetDodgeChance()
-        if IsPositive(dodge) then
-            table.insert(lines, { L["CS_Dodge"], FormatPercentInt(dodge), "dodge" })
-        end
-        local parry = GetParryChance()
-        if IsPositive(parry) then
-            table.insert(lines, { L["CS_Parry"], FormatPercentInt(parry), "parry" })
-        end
-        local block = GetBlockChance()
-        if IsPositive(block) then
-            table.insert(lines, { L["CS_Block"], FormatPercentInt(block), "block" })
+    -- 4. 坦克属性（可在设置中关闭；仅坦克专精显示，且只显示该专精依赖的属性，
+    --    非 0 时显示，整数百分比）
+    if (not db or db.showTank ~= false) and IsTankSpec() then
+        local tankStats = TANK_STATS[GetCurrentSpecID()] or DEFAULT_TANK_STATS
+        for _, statKey in ipairs(tankStats) do
+            local name, value = TANK_STAT_FUNCS[statKey]()
+            if name and IsPositive(value) then
+                table.insert(lines, { name, FormatPercentInt(value), statKey })
+            end
         end
     end
 
@@ -527,7 +559,7 @@ function module:OnOptionChanged(key, value)
     elseif key == "fontSize" or key == "lineSpacing" then
         ApplyFontAndSpacing()
         Refresh()
-    elseif key == "showTertiary" then
+    elseif key == "showTertiary" or key == "showTank" then
         Refresh()
     end
 end
