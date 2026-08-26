@@ -72,7 +72,8 @@ local CATEGORY_LAYOUT = {
     { nameKey = "Category_General", keys = {
         "macroEnhance", "mapCenter", "merchantExpand",
         "quickFocus", "hideCrafter", "teleportUnequip", "chatHideLearn",
-        "druidFlightForm", "achievementIncomplete",
+        "druidFlightForm", "achievementIncomplete", "lootStackDirection",
+        "guildFinderEnhance",
     } },
     { keys = { "characterStats" } },
     { keys = { "chatChannelBar" } },
