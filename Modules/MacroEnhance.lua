@@ -58,7 +58,62 @@ local function Clamp(value, minValue, maxValue)
 end
 
 -- ------------------------------------------------------------
--- ApplyMacroFrameLayout: 按 active 状态应用增强布局或复原默认布局
+-- ApplySelectorStructure: 一次性结构改动（仅干净上下文、宏界面首次显示前执行）
+-- 关键：绝不在 OnShow / MacroFrame_Update 等污染上下文里调用 Init() 重建 ScrollBox
+-- 视图——那会污染 ScrollBox 内部 frame 表，随后 ChangeTab→SaveMacro→EditMacro
+-- 会被判定为插件行为而抛 ADDON_ACTION_BLOCKED。结构只在加载时定型一次。
+-- ------------------------------------------------------------
+local selectorStructureDone = false
+local function ApplySelectorStructure()
+    if selectorStructureDone then return end
+    if not (MacroFrame and MacroFrame.MacroSelector) then return end
+    if not active then return end
+    selectorStructureDone = true
+
+    local width = TARGET_WIDTH
+    local selectorWidth = width - 19
+    local deltaHeight = TARGET_HEIGHT - BASE_HEIGHT
+    local selectorExtraHeight = math.floor(deltaHeight * 0.65)
+    local selectorHeight = math.max(146, 146 + selectorExtraHeight)
+
+    local selector = MacroFrame.MacroSelector
+    selector:SetSize(selectorWidth, selectorHeight)
+    selector:ClearAllPoints()
+    selector:SetPoint("TOPLEFT", MacroFrame, "TOPLEFT", 12, -66)
+
+    local usableWidth = selectorWidth - 32
+    local targetStride = 6
+    local buttonSize = 36
+    local minSpacing = 2
+    local maxSpacing = 20
+    local horizontalSpacing = math.floor((usableWidth - targetStride * buttonSize) / (targetStride - 1))
+    local stride = targetStride
+    if horizontalSpacing < minSpacing then
+        horizontalSpacing = minSpacing
+        stride = Clamp(math.floor((usableWidth + horizontalSpacing) / (buttonSize + horizontalSpacing)), 4, targetStride)
+    elseif horizontalSpacing > maxSpacing then
+        horizontalSpacing = maxSpacing
+    end
+
+    if selector.SetCustomPadding then
+        selector:SetCustomPadding(5, 5, 5, 5, horizontalSpacing, 13)
+    end
+    if selector.SetCustomStride then
+        selector:SetCustomStride(stride)
+    end
+
+    -- 视图重建只此一次（干净上下文），之后交给暴雪自身的 Update 流程
+    if selector.initialized and selector.Init then
+        selector.initialized = false
+        selector:Init()
+    elseif selector.UpdateSelections then
+        selector:UpdateSelections()
+    end
+end
+
+-- ------------------------------------------------------------
+-- ApplyMacroFrameLayout: 窗口几何重排（仅 SetSize/SetPoint，不触碰 ScrollBox
+-- 内部状态，OnShow 重复应用安全）。禁用时按原始尺寸复原。
 -- ------------------------------------------------------------
 local function ApplyMacroFrameLayout()
     if not MacroFrame then return end
@@ -78,46 +133,6 @@ local function ApplyMacroFrameLayout()
         MacroFrame.MacroSelector:SetSize(selectorWidth, selectorHeight)
         MacroFrame.MacroSelector:ClearAllPoints()
         MacroFrame.MacroSelector:SetPoint("TOPLEFT", MacroFrame, "TOPLEFT", 12, -66)
-
-        local selector = MacroFrame.MacroSelector
-        local stride, horizontalSpacing
-        if active then
-            -- 启用增强时固定每行 6 个（与每页 6×5=30 个对应），宽度不足时自动降级
-            local usableWidth = selectorWidth - 32
-            local targetStride = 6
-            local buttonSize = 36
-            local minSpacing = 2
-            local maxSpacing = 20
-            horizontalSpacing = math.floor((usableWidth - targetStride * buttonSize) / (targetStride - 1))
-            stride = targetStride
-
-            if horizontalSpacing < minSpacing then
-                horizontalSpacing = minSpacing
-                stride = Clamp(math.floor((usableWidth + horizontalSpacing) / (buttonSize + horizontalSpacing)), 4,
-                    targetStride)
-            elseif horizontalSpacing > maxSpacing then
-                horizontalSpacing = maxSpacing
-            end
-        else
-            -- 关闭增强时回到暴雪原始 6 列节奏
-            stride = 6
-            horizontalSpacing = 13
-        end
-
-        if selector.SetCustomPadding then
-            selector:SetCustomPadding(5, 5, 5, 5, horizontalSpacing, 13)
-        end
-        if selector.SetCustomStride then
-            selector:SetCustomStride(stride)
-        end
-
-        -- ScrollBoxSelector 的 stride 在 Init() 时固化，更新后重建视图
-        if selector.initialized and selector.Init then
-            selector.initialized = false
-            selector:Init()
-        elseif selector.UpdateSelections then
-            selector:UpdateSelections()
-        end
     end
 
     if MacroHorizontalBarLeft then

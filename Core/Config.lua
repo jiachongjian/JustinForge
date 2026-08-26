@@ -41,9 +41,18 @@
 --         buttonText = "播放", tooltip = "..." },
 --   注意：曾尝试 dropdown 类型（Settings.CreateDropdown），
 --   12.0.7 游戏内下拉无法展开，已移除；多选场景请用滑条代替
+--       { type = "header", name = "..." },  -- 子分类/组内分节标题，
+--         不绑定任何值，仅作视觉分组（可穿插在 options 任意位置）
 --   }
 --   值绑定到 DB.profile[mod.key][opt.key]，变化时回调
 --   mod:OnOptionChanged(opt.key, value)（模块可自行实现）
+--
+-- 独立子分类（subcategory）约定：
+--   mod.subcategory = true 时，该模块的启用开关与全部设置项
+--   不再显示在主分类分组中，而是归入「设置-插件」树中 JustinForge
+--   主分类下的独立子页面（Settings.RegisterVerticalLayoutSubcategory）。
+--   适合设置项较多、需要独立空间的模块。子分类创建失败时自动
+--   回退到主分类注册，保证设置入口不丢失。
 -- ============================================================
 
 local addonName, ns = ...
@@ -63,7 +72,7 @@ local CATEGORY_LAYOUT = {
     { nameKey = "Category_General", keys = {
         "macroEnhance", "mapCenter", "merchantExpand",
         "quickFocus", "hideCrafter", "teleportUnequip", "chatHideLearn",
-        "druidFlightForm",
+        "druidFlightForm", "achievementIncomplete",
     } },
     { keys = { "characterStats" } },
     { keys = { "chatChannelBar" } },
@@ -119,11 +128,17 @@ end
 -- ------------------------------------------------------------
 -- RegisterModuleOption: 为模块声明的单个附加设置生成控件
 -- ------------------------------------------------------------
+-- header：分节标题（不绑定值，仅视觉分组）
 -- slider：数值类设置（右侧显示当前数值）
 -- checkbox：开关类设置（绑定布尔值）
 -- button：触发式按钮，优先使用原生按钮控件，
 --         工厂不可用时回退为「勾选后触发并自动复位」的代理勾选框
 local function RegisterModuleOption(category, mod, dbEntry, opt)
+    if opt.type == "header" then
+        RegisterSectionHeader(category, opt.name)
+        return
+    end
+
     -- 值变化时通知模块（值已由绑定写入 dbEntry）
     -- pcall 保护：模块回调抛异常时聊天框提示，不影响设置面板本身
     local function NotifyOptionChanged(_, value)
@@ -305,10 +320,11 @@ function ns.Config:Init()
     local consumed = {}
 
     -- 注册单个模块的控件：启用勾选框 + 附加设置项（逐项 pcall 隔离）
-    local function RegisterModuleControls(mod)
+    -- targetCategory：目标分类（主分类或模块的独立子分类）
+    local function RegisterModuleControls(mod, targetCategory)
         local modOk, modErr = pcall(function()
             local dbEntry = ns.db.profile[mod.key]
-            RegisterModuleCheckbox(category, mod, dbEntry)
+            RegisterModuleCheckbox(targetCategory, mod, dbEntry)
         end)
         if not modOk then
             ns.Util:Error((ns.L["Error_ConfigModule"]):format(mod.key, tostring(modErr)))
@@ -318,11 +334,33 @@ function ns.Config:Init()
         if mod.options then
             local dbEntry = ns.db.profile[mod.key]
             for _, opt in ipairs(mod.options) do
-                local optOk, optErr = pcall(RegisterModuleOption, category, mod, dbEntry, opt)
+                local optOk, optErr = pcall(RegisterModuleOption, targetCategory, mod, dbEntry, opt)
                 if not optOk then
                     ns.Util:Error((ns.L["Error_ConfigModule"]):format(
                         mod.key .. "." .. (opt.key or "?"), tostring(optErr)))
                 end
+            end
+        end
+    end
+
+    -- ---- 阶段2a：为声明 subcategory 的模块创建独立子分类页 ----
+    -- 子分类显示在「设置-插件」树中 JustinForge 主分类之下，
+    -- 适合设置项较多的模块。创建失败时回退主分类注册，
+    -- 保证设置入口不丢失；无论成败都标记 consumed，
+    -- 不再进入主分类的分组渲染循环
+    for _, mod in ipairs(ns.Module:GetAll()) do
+        if mod.subcategory then
+            consumed[mod.key] = true
+            local subOk, subErr = pcall(function()
+                local subcat = Settings.RegisterVerticalLayoutSubcategory(category, mod.name)
+                Settings.RegisterAddOnCategory(subcat)
+                -- 子分类同样去掉原生「默认设置」按钮（独立 pcall 隔离）
+                pcall(DisableDefaultResetButton, subcat)
+                RegisterModuleControls(mod, subcat)
+            end)
+            if not subOk then
+                ns.Util:Error((ns.L["Error_ConfigModule"]):format(mod.key, tostring(subErr)))
+                RegisterModuleControls(mod, category)
             end
         end
     end
@@ -346,7 +384,7 @@ function ns.Config:Init()
             local mod = byKey[key]
             if mod then
                 consumed[key] = true
-                RegisterModuleControls(mod)
+                RegisterModuleControls(mod, category)
             end
         end
     end
@@ -356,7 +394,7 @@ function ns.Config:Init()
     for _, mod in ipairs(ns.Module:GetAll()) do
         if not consumed[mod.key] then
             pcall(RegisterSectionHeader, category, mod.name)
-            RegisterModuleControls(mod)
+            RegisterModuleControls(mod, category)
         end
     end
 end

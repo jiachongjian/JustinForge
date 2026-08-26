@@ -38,4 +38,6 @@ Modules\TooltipEnhance.lua
 Modules\HideCrafter.lua
 Modules\QuickFocus.lua
 Modules\AchievementUiFix.lua
+Modules\AchievementIncomplete.lua
+Modules\BigWigsEnhance.lua
 Core\Config.lua

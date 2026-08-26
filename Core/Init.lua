@@ -50,6 +50,15 @@ local defaults = {
         hideCrafter     = { enabled = true },  -- 功能12：隐藏制造业制造者
         quickFocus      = { enabled = true },  -- 功能13：快速设置焦点目标
         achievementUiFix = { enabled = true }, -- 功能15：成就对比界面报错修复
+        achievementIncomplete = { enabled = true }, -- 功能16：成就界面默认未完成
+        -- 功能17：BigWigs 计时条扩展（醒目条四元素独立样式 + 计数隐藏 + 倒计时取整）
+        -- 字号/尺寸类 0 = 跟随 BigWigs 自身设置；偏移类 0 = 默认位置
+        bigWigsEnhance  = { enabled = true,
+            integerTimer = true, hideCastCount = true,
+            labelFontSize = 0, labelOffsetX = 0, labelOffsetY = 0,
+            timeFontSize = 0, timeOffsetX = 0, timeOffsetY = 0,
+            iconSize = 0, textIconGap = 0,
+            indicatorSize = 0, indicatorOffsetX = 0, indicatorOffsetY = 0 },
     },
 }
 

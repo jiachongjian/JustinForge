@@ -124,6 +124,55 @@ L["HideCrafter_Desc"] = "在装备鼠标提示中隐藏制造业装备上的绿�
 L["QuickFocus_Name"] = "快速设置焦点目标"
 L["QuickFocus_Desc"] = "按住 Shift 并用右键点击场景中的单位、暴雪默认头像/小队/团队框体，或 EllesmereUI 单位框体/小队/团队框体，将其设为焦点。自动适配 EllesmereUI 的框体来源设置。禁用后自动还原框体属性。不支持姓名板。"
 
+-- 模块16：成就界面默认未完成
+L["AchievementIncomplete_Name"] = "成就默认筛选未完成"
+L["AchievementIncomplete_Desc"] = "每次打开成就界面时，自动将顶部筛选器重置为「未完成」。打开后仍可手动切换其他筛选。"
+
 -- 模块15：成就对比界面报错修复
 L["AchievementUiFix_Name"] = "成就对比报错修复"
 L["AchievementUiFix_Desc"] = "修复暴雪成就界面在对比模式下点击「总结」分类时报错的问题。暴雪的 GetCategoryNumAchievements 只接受数字分类ID，却在对比状态条刷新时把字符串 \"summary\" 传入并崩溃；本模块加一层参数守卫将其忽略（数字ID包括-1哨兵原样透传，行为与默认一致）。"
+
+-- 模块17：BigWigs 计时条扩展（设置项显示在独立子分类页中）
+L["BWE_Name"] = "BigWigs 计时条扩展"
+L["BWE_Desc"] = "微调 BigWigs 计时条样式：醒目计时条的图标、特殊图标（灭团技/坦克/治疗）、法术名称、施法时间支持独立设置；可隐藏醒目条法术名后的施法次数；倒计时 10 秒以内统一显示为整数。不影响 BigWigs / LittleWigs 的任何功能。"
+-- 子分类内分组标题
+L["BWE_HeaderGeneral"] = "通用"
+L["BWE_HeaderLabel"] = "醒目计时条：法术名称"
+L["BWE_HeaderTime"] = "醒目计时条：施法时间"
+L["BWE_HeaderIcon"] = "醒目计时条：图标"
+L["BWE_HeaderIndicator"] = "醒目计时条：特殊图标（灭团技/坦克/治疗）"
+L["BWE_HeaderPreview"] = "预览"
+-- 通用
+L["BWE_IntegerTimer"] = "倒计时显示为整数"
+L["BWE_IntegerTimerTip"] = "剩余时间 10 秒以内时，倒计时统一显示为整数秒，而非小数点后 1 位。仅对设置开启后新建的计时条生效。"
+L["BWE_HideCastCount"] = "隐藏醒目条施法次数"
+L["BWE_HideCastCountTip"] = "隐藏醒目计时条法术名称末尾括号中的施法次数，如「技能名 (2)」显示为「技能名」。"
+-- 法术名称
+L["BWE_LabelFontSize"] = "法术名称字号"
+L["BWE_FontSizeTip"] = "文字字号（0 = 跟随 BigWigs 设置）。"
+L["BWE_LabelOffsetX"] = "法术名称水平偏移 (X)"
+L["BWE_LabelOffsetY"] = "法术名称垂直偏移 (Y)"
+L["BWE_OffsetTip"] = "相对默认位置的偏移量（像素，0 = 默认位置）。"
+-- 施法时间
+L["BWE_TimeFontSize"] = "施法时间字号"
+L["BWE_TimeOffsetX"] = "施法时间水平偏移 (X)"
+L["BWE_TimeOffsetY"] = "施法时间垂直偏移 (Y)"
+-- 图标
+L["BWE_IconSize"] = "图标尺寸"
+L["BWE_IconSizeTip"] = "醒目计时条左侧法术图标的宽度（0 = 跟随 BigWigs 设置，默认与条同高）。"
+L["BWE_TextIconGap"] = "文字与图标间距"
+L["BWE_TextIconGapTip"] = "法术名称与左侧图标之间的额外间距（像素，0 = 默认间距）。"
+-- 特殊图标
+L["BWE_IndicatorSize"] = "特殊图标尺寸"
+L["BWE_IndicatorSizeTip"] = "醒目计时条上特殊图标（灭团技/坦克/治疗等标记）的尺寸（0 = 跟随 BigWigs 设置）。"
+L["BWE_IndicatorOffsetX"] = "特殊图标水平偏移 (X)"
+L["BWE_IndicatorOffsetY"] = "特殊图标垂直偏移 (Y)"
+-- 预览
+L["BWE_Preview"] = "预览醒目计时条"
+L["BWE_PreviewBtn"] = "预览"
+L["BWE_PreviewTip"] = "在屏幕中央显示一条模拟的醒目计时条，实时查看当前设置的效果。"
+L["BWE_StopPreview"] = "停止预览"
+L["BWE_StopPreviewBtn"] = "停止"
+L["BWE_StopPreviewTip"] = "移除屏幕中央的预览计时条。"
+L["BWE_PreviewLabel"] = "预览法术 (2)"
+L["BWE_NoBigWigs"] = "未检测到 BigWigs 插件，BigWigs 计时条扩展未生效。"
