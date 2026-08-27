@@ -45,8 +45,7 @@ local defaults = {
         -- 功能9：人物属性面板（posX/posY 为相对屏幕中心的偏移，默认屏幕左侧中部）
         characterStats  = { enabled = true, posX = 20 - math.floor(screenWidth / 2), posY = 0 },
         -- 功能11/14：鼠标提示扩展（合并大秘境信息+团本进度+人物提示增强）
-        -- fontSize：提示框字号，0 = 暴雪默认
-        tooltipEnhance  = { enabled = true, fontSize = 0 },
+        tooltipEnhance  = { enabled = true },
         hideCrafter     = { enabled = true },  -- 功能12：隐藏制造业制造者
         quickFocus      = { enabled = true },  -- 功能13：快速设置焦点目标
         achievementUiFix = { enabled = true }, -- 功能15：成就对比界面报错修复

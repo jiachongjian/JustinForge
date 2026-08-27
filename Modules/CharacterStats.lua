@@ -23,7 +23,8 @@
 --     天赋/基础部分）；非 secret 时按专精校准 zeroValue 并存入 DB，
 --     secret 时用技能描述反推估算，估算不可用退回 "x% + y%" 双段显示
 --   - 移速：GetUnitSpeed("player") 第二返回值 / 7 * 100（7 = 基础跑步速度），
---     1 秒 Ticker 驱动刷新，脱离事件降低开销；secret 时原样 %.1f 显示
+--     1 秒 Ticker 驱动刷新，脱离事件降低开销；secret 时借 AbbreviateNumbers
+--     在 C++ 层完成百分比换算（ElvUI MovementSpeed 数据文本同款方案）
 --   - 坦克判定：专精表查坦克标志，表外专精回退 GetSpecializationRole API
 --   - 事件：对齐参考事件集合（含 UNIT_AURA 覆盖属性类 Buff、SPELL_TEXT_UPDATE
 --     配合描述解析），unit 事件过滤玩家 + 0.1s 防抖合并刷新
@@ -381,14 +382,32 @@ end
 -- GetMoveSpeedText: 实时移动速度百分比文本（100% = 基础跑步速度 7 码/秒）
 -- ------------------------------------------------------------
 -- 参考插件口径：取 GetUnitSpeed 第二返回值（当前移动速度），站立时为 0%；
--- %.0f 自带舍入，规避 (speed/7)*100 的浮点截断（99.999 → 100）；
--- secret 值无法算术，退回原样 %.1f 显示
+-- %.0f 自带舍入，规避 (speed/7)*100 的浮点截断（99.999 → 100）
+--
+-- 战斗中 runSpeed 为 secret 值，Lua 层无法做 /7*100 算术换算（会直接抛错）。
+-- 改用全局 API AbbreviateNumbers：除法在其 C++ 层完成，secret 值可作为参数
+-- 传入，返回非 secret 的格式化字符串，可安全拼接 "%"。
+-- significandDivisor = 7 * 0.01，使 speed/divisor = speed*100/7 即百分比；
+-- fractionDivisor = 1 表示取整显示（ElvUI MovementSpeed 数据文本同款配置）。
+local MOVE_SPEED_ABBREV = {
+    breakpointData = {
+        {
+            breakpoint = 0,
+            abbreviation = "",
+            fractionDivisor = 1,
+            significandDivisor = (BASE_MOVEMENT_SPEED or 7) * 0.01,
+            abbreviationIsGlobal = false,
+        },
+    },
+}
+
 local function GetMoveSpeedText()
     local _, runSpeed = GetUnitSpeed("player")
     if runSpeed == nil then return "?" end
     if IsSecret(runSpeed) then
-        local ok, text = pcall(string.format, "%.1f", runSpeed)
-        return (ok and text) or "?"
+        local ok, text = pcall(AbbreviateNumbers, runSpeed, MOVE_SPEED_ABBREV)
+        if ok and text then return text .. "%" end
+        return "?"
     end
     local ok, text = pcall(string.format, "%.0f%%", (runSpeed / 7) * 100)
     return (ok and text) or "?"

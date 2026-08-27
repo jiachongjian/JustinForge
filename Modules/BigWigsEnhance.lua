@@ -61,8 +61,11 @@ local DEFAULT_ICON_SIZE = 30
 -- 图标圆角蒙版（白色圆角矩形 + alpha，AddMaskTexture 裁剪图标）
 local ICON_MASK = "Interface\\AddOns\\JustinForge\\Media\\RoundedRect.tga"
 -- 施法次数后缀：BigWigs 模块以 CL.count:format 拼入 label
--- （如 "技能名 (2)"，中文客户端可能是全角括号 "（2）"）
-local CAST_COUNT_PATTERN = "%s*[%(（]%d+[%)）]$"
+-- （英文客户端 "%s (%d)" 半角括号；中文客户端 "%s（%d）" 全角括号）
+-- 注意：Lua 模式匹配按字节处理，全角括号是 3 字节 UTF-8 序列，
+-- 放进字符类 [...] 会被拆成单字节导致 %d+ 永远匹配不上，
+-- 必须写成字面序列单独匹配（UTF-8 字节的每个字节都不是魔法字符）
+local CAST_COUNT_PATTERNS = { "%s*%(%d+%)$", "%s*（%d+）$" }
 -- 倒计时小数位格式串（下标 = 小数位数 + 1）
 local COUNT_FORMATS = { "%.0f", "%.1f", "%.2f" }
 
@@ -236,7 +239,10 @@ end
 local function SetupAlertContent(f, bar, icon)
     local text = bar:GetLabel()
     if text and not issecretvalue(text) then
-        text = text:gsub(CAST_COUNT_PATTERN, "")
+        -- 依次尝试半角/全角括号两种次数后缀（见 CAST_COUNT_PATTERNS 注释）
+        for i = 1, #CAST_COUNT_PATTERNS do
+            text = text:gsub(CAST_COUNT_PATTERNS[i], "")
+        end
     end
     -- secret string 无法 gsub，但可直接 SetText 显示（仅 Lua 侧不可读）
     f.name:SetText(text or "")

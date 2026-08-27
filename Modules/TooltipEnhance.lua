@@ -4,25 +4,25 @@
 -- 功能描述：
 --   合并原「鼠标提示大秘境信息」与「鼠标提示团本进度」模块，
 --   并增强人物提示框显示。鼠标指向玩家时：
---     1. 提示框字号设置（0 = 暴雪默认，作用于提示框内所有文字）
---     2. 姓名行：职业染色、隐藏头衔、同服隐藏服务器名、显示<离开><忙碌><离线>
---     3. 公会行：公会名称~会阶名称，除 ~ 号外均为公会绿色
---     4. 等级行：隐藏"等级""玩家"，数字为系统黄色；种族后插入专精（职业色），
---        并折叠原独立的"专精 职业"行
---     5. 大秘境分数、史诗钥匙（仅自己背包有钥匙时显示，史诗紫色）、
---        物品等级（套装数 n/5 为 #C952F4 紫色）
---     6. 每个地下城的最佳层数与分数（带地下城图标，层数右对齐）
---     7. 当前赛季团本进度（带团本图标，中文难度，右对齐）
---     8. 目标的目标（>>姓名/你<<，职业染色）
+--     1. 姓名行：职业染色、隐藏头衔、同服隐藏服务器名、显示<离开><忙碌><离线>
+--     2. 公会行：<公会名称>[会阶名称]，名称为公会绿色、符号白色
+--     3. 等级行：隐藏"等级"字样，数字为系统黄色；
+--        原"专精 职业"行就地改为职业染色（不折叠、不改字体）
+--     4. 大秘境分数、史诗钥匙（仅自己背包有钥匙时显示，史诗紫色）、
+--        物品等级（套装数 n/5 为 #FF69B4 粉色）
+--     5. 每个地下城的最佳层数与分数（带地下城图标，层数右对齐）
+--     6. 当前赛季团本进度（带团本图标，中文难度，右对齐）
+--     7. 目标的目标（>>姓名/你<<，职业染色）
 --
 -- 实现原理：
 --   1. TooltipDataProcessor.AddTooltipPostCall(Unit) 回调中取鼠标单位
---   2. 修改已有行（姓名/公会/等级/阵营）+ 追加新行（M+/团本/目标）
---   3. 折叠行 = SetText("") + 字号缩为 1；字体改动统一记录原字体，
---      在 OnTooltipCleared/OnHide 时恢复，避免污染后续提示框
---   4. 回调无法卸载，禁用时通过模块开关短路返回
---   5. M+评分数据缓存 60 秒，团本进度数据缓存 120 秒
---   6. 团本进度对其他玩家使用成就对比 API，受观察距离限制
+--   2. 修改已有行（姓名/公会/等级/专精，仅文字与颜色）+ 追加新行（M+/团本/目标）
+--   3. 不修改任何字体/字号/描边，保持暴雪原生样式，避免污染第三方插件提示框
+--   4. 追加行右列锚点/宽度改动统一记录原始值，在 OnTooltipCleared/OnHide
+--      时恢复（FontString 是复用的，残留锚点会让第三方插件行文字重叠）
+--   5. 回调无法卸载，禁用时通过模块开关短路返回
+--   6. M+评分数据缓存 60 秒，团本进度数据缓存 120 秒
+--   7. 团本进度对其他玩家使用成就对比 API，受观察距离限制
 -- ============================================================
 
 local addonName, ns = ...
@@ -114,11 +114,7 @@ local module = ns.Module:Register({
     defaultEnabled = true,
 })
 
--- 字号设置（0 = 暴雪默认）
-module.options = {
-    { type = "slider", key = "fontSize", name = L["TE_FontSize"],
-      min = 0, max = 24, step = 1, default = 0, tooltip = L["TE_FontSizeTip"] },
-}
+-- 无可配置项：仅追加信息与改换文字颜色/格式，不改任何字体样式
 
 -- ============================================================
 -- 数据缓存
@@ -134,10 +130,10 @@ local seasonOrder = {}
 local pendingGUIDs = {}
 local achievementUILoaded = false
 
--- 本次回调中被折叠的行：[lineIndex] = true
-local collapsedLines = {}
--- 被改动过字体的 FontString 原始字体记录：[fs] = { file, size, flags }
-local defaultFonts = {}
+-- 被改动过锚点/宽度的 FontString 原始记录：[fs] = { points = {...}, width = w }
+-- （右列重锚定/定宽后若不清场恢复，会污染后续复用同一 FontString 的
+--   第三方插件行，造成左右文字重叠）
+local defaultAnchors = {}
 -- 需做「数值列等宽 + 右缘对齐」的行（地下城分数 / 团本进度）：[lineIndex] = true
 local colAlignLines = {}
 
@@ -197,60 +193,64 @@ local function SafeKillTimes(getStatFunc, statID)
     return tonumber(value, 10) or 0
 end
 
--- 获取 DB 配置
-local function GetDB()
-    return ns.db and ns.db.profile and ns.db.profile.tooltipEnhance or {}
-end
-
--- 获取 tooltip 的第 N 行左右 FontString
-local function GetLineFonts(tooltip, index)
-    local name = tooltip:GetName()
-    if not name then return nil, nil end
-    return _G[name.."TextLeft"..index], _G[name.."TextRight"..index]
-end
-
--- 记录 FontString 原始字体（首次改动前调用）
-local function RememberFont(fs)
-    if fs and not defaultFonts[fs] then
-        defaultFonts[fs] = { fs:GetFont() }
+-- 记录 FontString 原始锚点与宽度（首次改动锚点前调用）
+-- 返回 true = 记录成功，可安全修改；false = 记录失败（secret 值无法回放），
+-- 此时必须跳过对该 FontString 的任何改动——改了无法恢复，残留锚点会
+-- 污染后续复用同一 FontString 的物品/法术等提示行
+local function RememberAnchor(fs)
+    if not fs then return false end
+    if defaultAnchors[fs] then return true end
+    local ok, result = pcall(function()
+        local pts = {}
+        for i = 1, fs:GetNumPoints() do
+            local point, relTo, relPoint, x, y = fs:GetPoint(i)
+            -- 几何信息可能是 secret 值（如世界光标提示），无法安全回放，放弃记录
+            if issecretvalue and (issecretvalue(point) or issecretvalue(relPoint)
+                or issecretvalue(x) or issecretvalue(y)) then
+                return nil
+            end
+            pts[i] = { point, relTo, relPoint, x, y }
+        end
+        local w = fs:GetWidth()
+        if issecretvalue and issecretvalue(w) then return nil end
+        local jh = fs:GetJustifyH()
+        if issecretvalue and issecretvalue(jh) then return nil end
+        return { points = pts, width = w, justifyH = jh }
+    end)
+    if ok and result then
+        defaultAnchors[fs] = result
+        return true
     end
+    return false
 end
 
--- 恢复所有被改动过的字体（提示框清空/隐藏时调用，防止污染后续内容）
-local function RestoreAllFonts()
-    for fs, f in pairs(defaultFonts) do
-        fs:SetFont(f[1], f[2], f[3])
+-- 恢复所有被改动过的锚点与宽度（提示框清空/隐藏时调用）
+local function RestoreAllAnchors()
+    for fs, a in pairs(defaultAnchors) do
+        pcall(function()
+            fs:ClearAllPoints()
+            for _, p in ipairs(a.points) do
+                if p[2] then
+                    fs:SetPoint(p[1], p[2], p[3], p[4], p[5])
+                else
+                    fs:SetPoint(p[1], p[4], p[5])
+                end
+            end
+            fs:SetWidth(a.width)
+            if a.justifyH then fs:SetJustifyH(a.justifyH) end
+        end)
     end
+    defaultAnchors = {}
 end
 
 GameTooltip:HookScript("OnTooltipCleared", function()
-    collapsedLines = {}
     colAlignLines = {}
-    RestoreAllFonts()
+    RestoreAllAnchors()
 end)
 GameTooltip:HookScript("OnHide", function()
-    collapsedLines = {}
     colAlignLines = {}
-    RestoreAllFonts()
+    RestoreAllAnchors()
 end)
-
--- 折叠一行：清空文字并把字号缩为 1（视觉上该行消失）
-local function CollapseLine(tooltip, idx)
-    local left, right = GetLineFonts(tooltip, idx)
-    if left then
-        RememberFont(left)
-        left:SetText("")
-        local f, _, fl = left:GetFont()
-        if f then left:SetFont(f, 1, fl) end
-    end
-    if right then
-        RememberFont(right)
-        right:SetText("")
-        local f, _, fl = right:GetFont()
-        if f then right:SetFont(f, 1, fl) end
-    end
-    collapsedLines[idx] = true
-end
 
 -- 获取职业颜色 hex 和 RGB
 local function GetClassColor(classFile)
@@ -420,32 +420,6 @@ local function RequestComparison(unit, guid)
 end
 
 -- ============================================================
--- 全局文字样式（字号 + 细描边；0 字号 = 暴雪默认；跳过被折叠的行）
--- 对任意类型提示框（人物/物品/技能等）全局生效
--- ============================================================
-local function StyleFonts(tooltip)
-    local db = GetDB()
-    local size = db.fontSize or 0
-    local name = tooltip:GetName()
-    if not name then return end
-    for i = 1, tooltip:NumLines() do
-        if not collapsedLines[i] then
-            local left, right = GetLineFonts(tooltip, i)
-            if left then
-                RememberFont(left)
-                local f, curSize, _ = left:GetFont()
-                if f then left:SetFont(f, size > 0 and size or curSize, "OUTLINE") end
-            end
-            if right then
-                RememberFont(right)
-                local f, curSize, _ = right:GetFont()
-                if f then right:SetFont(f, size > 0 and size or curSize, "OUTLINE") end
-            end
-        end
-    end
-end
-
--- ============================================================
 -- 追加行的右列右对齐（锚定到提示框右缘，inset 与左列对称）
 -- ============================================================
 local function GetRightInset(tooltip)
@@ -472,7 +446,8 @@ local function RightAlignLines(tooltip, fromLine)
     local inset = GetRightInset(tooltip)
     for i = fromLine, tooltip:NumLines() do
         local right = _G[name .. "TextRight" .. i]
-        if right then
+        -- 记录失败（secret）时跳过：宁可该行不对齐，也不污染后续提示
+        if right and RememberAnchor(right) then
             right:ClearAllPoints()
             right:SetPoint("RIGHT", tooltip, "RIGHT", -inset, 0)
             right:SetJustifyH("RIGHT")
@@ -482,9 +457,8 @@ end
 
 -- ============================================================
 -- AlignNumericCols: 数值行等宽列 + 右缘对齐
--- （地下城分数 / 团本进度专用；必须在 StyleFonts 之后调用，
---  用 FontString:GetStringWidth() 实测渲染宽度取最大值定列宽，
---  规避非等宽字体造成的「同位数不同宽」参差，无需外部等宽字体）
+-- （地下城分数 / 团本进度专用；用 FontString:GetStringWidth() 实测
+--  渲染宽度取最大值定列宽，规避非等宽字体造成的「同位数不同宽」参差）
 -- ============================================================
 local function AlignNumericCols(tooltip)
     if not next(colAlignLines) then return end
@@ -500,23 +474,27 @@ local function AlignNumericCols(tooltip)
         if right then
             tinsert(rights, right)
             local ok, w = pcall(right.GetStringWidth, right)
-            if ok and w and w > maxW then maxW = w end
+            if ok and w and not (issecretvalue and issecretvalue(w)) and w > maxW then
+                maxW = w
+            end
         end
     end
     if #rights == 0 or maxW <= 0 then return end
 
     local colW = maxW + 4 -- 右缘留 4px 内边距，避免贴边
     for _, right in ipairs(rights) do
-        pcall(function()
-            right:ClearAllPoints()
-            right:SetPoint("RIGHT", tooltip, "RIGHT", -inset, 0)
-            right:SetJustifyH("RIGHT")
-            right:SetWidth(colW)
-        end)
+        if RememberAnchor(right) then
+            pcall(function()
+                right:ClearAllPoints()
+                right:SetPoint("RIGHT", tooltip, "RIGHT", -inset, 0)
+                right:SetJustifyH("RIGHT")
+                right:SetWidth(colW)
+            end)
+        end
     end
 end
 
--- 强制追加行右列不换行：右列宽度取文本内容实际渲染宽度（须在 StyleFonts 之后调用）。
+-- 强制追加行右列不换行：右列宽度取文本内容实际渲染宽度。
 -- 物品等级等整行较长（含全角括号）时，AddDoubleLine 预设的右列宽度偏小会导致内容换行，
 -- 这里收敛为内容真实宽度，保证单行右对齐显示。
 local function SingleLineAlign(tooltip, fromLine)
@@ -526,10 +504,10 @@ local function SingleLineAlign(tooltip, fromLine)
         -- 已加入等宽数值列的行（地下城分数/团本进度）交给 AlignNumericCols，这里跳过
         if not colAlignLines[i] then
             local right = _G[name .. "TextRight" .. i]
-            if right then
+            if right and RememberAnchor(right) then
                 pcall(function()
                     local w = right:GetStringWidth()
-                    if w and w > 0 then
+                    if w and not (issecretvalue and issecretvalue(w)) and w > 0 then
                         right:SetWidth(w + 2)
                     else
                         right:SetWidth(0)
@@ -537,26 +515,6 @@ local function SingleLineAlign(tooltip, fromLine)
                 end)
             end
         end
-    end
-end
-
--- 全局字号/描边：注册到各内容类型的「后置回调」，确保在行构建完成、显示之前生效，
--- 避免单纯 OnShow 时机导致默认字体闪现后被系统覆盖（物品/技能等）。
--- 单位类型已由 OnTooltipUnit 单独处理，这里只覆盖其余类型。
-do
-    local dtypes = {
-        Enum.TooltipDataType.Item,
-        Enum.TooltipDataType.Spell,
-        Enum.TooltipDataType.Action,
-        Enum.TooltipDataType.Achievement,
-        Enum.TooltipDataType.Macro,
-    }
-    for _, dt in ipairs(dtypes) do
-        pcall(TooltipDataProcessor.AddTooltipPostCall, dt, function(tooltip)
-            if module.enabled then
-                StyleFonts(tooltip)
-            end
-        end)
     end
 end
 
@@ -632,7 +590,8 @@ local function ModifyGuildLine(tooltip, unit)
 end
 
 -- ============================================================
--- 人物提示框修改：等级行（合并专精，折叠原"专精 职业"行）
+-- 人物提示框修改：等级行（隐藏"等级"字样、数字黄色）+ 专精职业行（就地改职业色）
+-- 不折叠任何行，不改变字体，仅修改文字颜色
 -- ============================================================
 local function ModifyLevelAndSpecLine(tooltip, unit)
     local okLv, level = pcall(UnitLevel, unit)
@@ -674,21 +633,22 @@ local function ModifyLevelAndSpecLine(tooltip, unit)
         end
     end
 
-    -- 重建等级行：黄色等级 + 种族 + 职业色专精 + 职业色职业
+    -- 重建等级行：隐藏"等级"字样，数字用系统黄色
     if levelIdx then
         local left = _G["GameTooltipTextLeft"..levelIdx]
         if left then
             local parts = { format("|cffffff00%s|r", BreakUp(level)) }
             if race and race ~= "" then tinsert(parts, race) end
-            if specText then tinsert(parts, format("|cff%s%s|r", classHex, specText)) end
-            if className then tinsert(parts, format("|cff%s%s|r", classHex, className)) end
             left:SetText(tconcat(parts, " "))
         end
     end
 
-    -- 折叠原独立的「专精 职业」行
-    if specIdx then
-        CollapseLine(tooltip, specIdx)
+    -- 专精职业行：就地改为职业染色（不折叠，不改字体）
+    if specIdx and specText and className then
+        local left = _G["GameTooltipTextLeft"..specIdx]
+        if left then
+            left:SetText(format("|cff%s%s %s|r", classHex, specText, className))
+        end
     end
 end
 
@@ -950,8 +910,7 @@ local function OnTooltipUnit(tooltip, data)
     if not unit or (issecretvalue and issecretvalue(unit)) then return end
     if SafeBool(UnitIsPlayer(unit)) ~= true then return end
 
-    -- 重置折叠行与等宽列记录
-    collapsedLines = {}
+    -- 重置等宽列记录
     colAlignLines = {}
 
     -- ---- 阶段1：修改已有行（所有玩家） ----
@@ -991,9 +950,8 @@ local function OnTooltipUnit(tooltip, data)
         AddTargetOfTarget(tooltip, unit)
     end
 
-    -- ---- 阶段3：追加行右列右对齐 + 全局字号描边 + 数值列等宽 ----
+    -- ---- 阶段3：追加行右列右对齐 + 数值列等宽 ----
     RightAlignLines(tooltip, appendStart)
-    StyleFonts(tooltip)
     AlignNumericCols(tooltip)
     SingleLineAlign(tooltip, appendStart)
 
@@ -1019,6 +977,6 @@ function module:OnDisable()
     progressFrame:UnregisterAllEvents()
     ClearAchievementComparisonUnit()
     pendingGUIDs = {}
-    RestoreAllFonts()
+    RestoreAllAnchors()
     Util:Debug("TooltipEnhance: 已禁用")
 end
