@@ -10,19 +10,28 @@
 --        原"专精 职业"行就地改为职业染色（不折叠、不改字体）
 --     4. 大秘境分数、史诗钥匙（仅自己背包有钥匙时显示，史诗紫色）、
 --        物品等级（套装数 n/5 为 #FF69B4 粉色）
---     5. 每个地下城的最佳层数与分数（带地下城图标，层数右对齐）
---     6. 当前赛季团本进度（带团本图标，中文难度，右对齐）
+--     5. 每个地下城的最佳层数与分数（带地下城图标）
+--     6. 当前赛季团本进度（带团本图标，中文难度）
 --     7. 目标的目标（>>姓名/你<<，职业染色）
+--     8. 世界悬停提示立即消失：鼠标离开世界单位/对象时跳过暴雪默认的
+--        「停留 1 秒 + 淡出 1 秒」，提示框立刻隐藏
+--   （字号保持原生：原 15 号字功能已移除，避免污染池化复用的 FontString）
 --
 -- 实现原理：
 --   1. TooltipDataProcessor.AddTooltipPostCall(Unit) 回调中取鼠标单位
 --   2. 修改已有行（姓名/公会/等级/专精，仅文字与颜色）+ 追加新行（M+/团本/目标）
---   3. 不修改任何字体/字号/描边，保持暴雪原生样式，避免污染第三方插件提示框
---   4. 追加行右列锚点/宽度改动统一记录原始值，在 OnTooltipCleared/OnHide
---      时恢复（FontString 是复用的，残留锚点会让第三方插件行文字重叠）
+--   3. 字号保持原生，不做任何字体改动（原 15 号字功能已移除：行 FontString
+--      为池化复用，字体残留会持续污染第三方插件追加的内容）
+--   4. 零几何/字体写操作：不挪锚点、不定宽、不改字号——行 FontString 为
+--      全提示类型池化复用，任何持久属性残留都会污染物品等提示的第三方内容
+--      （原右对齐功能已移除：AddDoubleLine 右列采用暴雪原生紧随布局）
 --   5. 回调无法卸载，禁用时通过模块开关短路返回
 --   6. M+评分数据缓存 60 秒，团本进度数据缓存 120 秒
 --   7. 团本进度对其他玩家使用成就对比 API，受观察距离限制
+--   8. 立即消失：hook GameTooltip 实例的 FadeOut（C++ 内置方法：先停留
+--      1 秒保持不透明，再花 1 秒淡出），触发时立即 Hide。注意 GameTooltip
+--      经 XML mixin 属性在创建时已拷贝 GameTooltipDataMixin 的函数副本，
+--      事后 hook GameTooltipDataMixin 本身不会影响该实例，必须 hook 实例
 -- ============================================================
 
 local addonName, ns = ...
@@ -75,7 +84,6 @@ local C_MythicPlus_GetOwnedKeystoneChallengeMapID = C_MythicPlus.GetOwnedKeyston
 local C_MythicPlus_GetOwnedKeystoneLevel = C_MythicPlus.GetOwnedKeystoneLevel
 local C_PlayerInfo_GetInspectItemLevel = C_PlayerInfo.GetInspectItemLevel
 local C_PlayerInfo_GetPlayerMythicPlusRatingSummary = C_PlayerInfo.GetPlayerMythicPlusRatingSummary
-
 local RAID_CLASS_COLORS = RAID_CLASS_COLORS
 
 -- 12.x 秘密值检查
@@ -114,7 +122,7 @@ local module = ns.Module:Register({
     defaultEnabled = true,
 })
 
--- 无可配置项：仅追加信息与改换文字颜色/格式，不改任何字体样式
+-- 无可配置项：仅追加信息与改换文字颜色/格式，字号/字体保持原生
 
 -- ============================================================
 -- 数据缓存
@@ -129,13 +137,6 @@ local seasonOrder = {}
 -- 已发出成就对比请求的 GUID 集合
 local pendingGUIDs = {}
 local achievementUILoaded = false
-
--- 被改动过锚点/宽度的 FontString 原始记录：[fs] = { points = {...}, width = w }
--- （右列重锚定/定宽后若不清场恢复，会污染后续复用同一 FontString 的
---   第三方插件行，造成左右文字重叠）
-local defaultAnchors = {}
--- 需做「数值列等宽 + 右缘对齐」的行（地下城分数 / 团本进度）：[lineIndex] = true
-local colAlignLines = {}
 
 -- ============================================================
 -- 配色方案（团本难度）
@@ -193,64 +194,23 @@ local function SafeKillTimes(getStatFunc, statID)
     return tonumber(value, 10) or 0
 end
 
--- 记录 FontString 原始锚点与宽度（首次改动锚点前调用）
--- 返回 true = 记录成功，可安全修改；false = 记录失败（secret 值无法回放），
--- 此时必须跳过对该 FontString 的任何改动——改了无法恢复，残留锚点会
--- 污染后续复用同一 FontString 的物品/法术等提示行
-local function RememberAnchor(fs)
-    if not fs then return false end
-    if defaultAnchors[fs] then return true end
-    local ok, result = pcall(function()
-        local pts = {}
-        for i = 1, fs:GetNumPoints() do
-            local point, relTo, relPoint, x, y = fs:GetPoint(i)
-            -- 几何信息可能是 secret 值（如世界光标提示），无法安全回放，放弃记录
-            if issecretvalue and (issecretvalue(point) or issecretvalue(relPoint)
-                or issecretvalue(x) or issecretvalue(y)) then
-                return nil
-            end
-            pts[i] = { point, relTo, relPoint, x, y }
+-- ============================================================
+-- 世界悬停提示立即消失
+-- 鼠标离开世界单位/对象时，暴雪 SetWorldCursor 走「ClearHandlerInfo +
+-- FadeOut」分支；FadeOut 为 C++ 内置方法：先停留 1 秒保持不透明，再花
+-- 1 秒淡出（观感为"提示框延迟消失"）。hook FadeOut 命中后立即 Hide。
+-- 注意：GameTooltip 经 XML mixin 属性在创建时已拷贝 GameTooltipDataMixin
+-- 的函数副本，事后 hook mixin 表不会影响已创建的实例（旧版 hook
+-- GameTooltipDataMixin.SetWorldCursor 从未生效的原因），必须 hook 实例。
+-- 回调无法卸载，禁用时通过模块开关短路返回。
+-- ============================================================
+if GameTooltip and GameTooltip.FadeOut then
+    hooksecurefunc(GameTooltip, "FadeOut", function(self)
+        if module.enabled then
+            self:Hide()
         end
-        local w = fs:GetWidth()
-        if issecretvalue and issecretvalue(w) then return nil end
-        local jh = fs:GetJustifyH()
-        if issecretvalue and issecretvalue(jh) then return nil end
-        return { points = pts, width = w, justifyH = jh }
     end)
-    if ok and result then
-        defaultAnchors[fs] = result
-        return true
-    end
-    return false
 end
-
--- 恢复所有被改动过的锚点与宽度（提示框清空/隐藏时调用）
-local function RestoreAllAnchors()
-    for fs, a in pairs(defaultAnchors) do
-        pcall(function()
-            fs:ClearAllPoints()
-            for _, p in ipairs(a.points) do
-                if p[2] then
-                    fs:SetPoint(p[1], p[2], p[3], p[4], p[5])
-                else
-                    fs:SetPoint(p[1], p[4], p[5])
-                end
-            end
-            fs:SetWidth(a.width)
-            if a.justifyH then fs:SetJustifyH(a.justifyH) end
-        end)
-    end
-    defaultAnchors = {}
-end
-
-GameTooltip:HookScript("OnTooltipCleared", function()
-    colAlignLines = {}
-    RestoreAllAnchors()
-end)
-GameTooltip:HookScript("OnHide", function()
-    colAlignLines = {}
-    RestoreAllAnchors()
-end)
 
 -- 获取职业颜色 hex 和 RGB
 local function GetClassColor(classFile)
@@ -416,105 +376,6 @@ local function RequestComparison(unit, guid)
     local ok, result = pcall(SetAchievementComparisonUnit, unit)
     if ok and result then
         pendingGUIDs[guid] = true
-    end
-end
-
--- ============================================================
--- 追加行的右列右对齐（锚定到提示框右缘，inset 与左列对称）
--- ============================================================
-local function GetRightInset(tooltip)
-    local name = tooltip:GetName()
-    local left1 = name and _G[name .. "TextLeft1"]
-    if left1 then
-        local ok, _, _, relPoint, x = pcall(left1.GetPoint, left1, 1)
-        -- 12.0: 锚点信息可能是 secret 值（如世界光标提示），pcall 无法拦住后续比较，须先判 secret
-        if ok and relPoint and x
-            and not (issecretvalue and (issecretvalue(relPoint) or issecretvalue(x)))
-            and (relPoint == "LEFT" or relPoint == "TOPLEFT") then
-            local inset = math.abs(x)
-            if inset > 0 and inset < 40 then
-                return inset
-            end
-        end
-    end
-    return 15
-end
-
-local function RightAlignLines(tooltip, fromLine)
-    local name = tooltip:GetName()
-    if not name then return end
-    local inset = GetRightInset(tooltip)
-    for i = fromLine, tooltip:NumLines() do
-        local right = _G[name .. "TextRight" .. i]
-        -- 记录失败（secret）时跳过：宁可该行不对齐，也不污染后续提示
-        if right and RememberAnchor(right) then
-            right:ClearAllPoints()
-            right:SetPoint("RIGHT", tooltip, "RIGHT", -inset, 0)
-            right:SetJustifyH("RIGHT")
-        end
-    end
-end
-
--- ============================================================
--- AlignNumericCols: 数值行等宽列 + 右缘对齐
--- （地下城分数 / 团本进度专用；用 FontString:GetStringWidth() 实测
---  渲染宽度取最大值定列宽，规避非等宽字体造成的「同位数不同宽」参差）
--- ============================================================
-local function AlignNumericCols(tooltip)
-    if not next(colAlignLines) then return end
-    local name = tooltip:GetName()
-    if not name then return end
-    local inset = GetRightInset(tooltip)
-
-    -- 实测各数值行渲染宽度（须在字体设置后），取最大值定整个数值列的宽度
-    local maxW = 0
-    local rights = {}
-    for line in pairs(colAlignLines) do
-        local right = _G[name .. "TextRight" .. line]
-        if right then
-            tinsert(rights, right)
-            local ok, w = pcall(right.GetStringWidth, right)
-            if ok and w and not (issecretvalue and issecretvalue(w)) and w > maxW then
-                maxW = w
-            end
-        end
-    end
-    if #rights == 0 or maxW <= 0 then return end
-
-    local colW = maxW + 4 -- 右缘留 4px 内边距，避免贴边
-    for _, right in ipairs(rights) do
-        if RememberAnchor(right) then
-            pcall(function()
-                right:ClearAllPoints()
-                right:SetPoint("RIGHT", tooltip, "RIGHT", -inset, 0)
-                right:SetJustifyH("RIGHT")
-                right:SetWidth(colW)
-            end)
-        end
-    end
-end
-
--- 强制追加行右列不换行：右列宽度取文本内容实际渲染宽度。
--- 物品等级等整行较长（含全角括号）时，AddDoubleLine 预设的右列宽度偏小会导致内容换行，
--- 这里收敛为内容真实宽度，保证单行右对齐显示。
-local function SingleLineAlign(tooltip, fromLine)
-    local name = tooltip:GetName()
-    if not name then return end
-    for i = fromLine, tooltip:NumLines() do
-        -- 已加入等宽数值列的行（地下城分数/团本进度）交给 AlignNumericCols，这里跳过
-        if not colAlignLines[i] then
-            local right = _G[name .. "TextRight" .. i]
-            if right and RememberAnchor(right) then
-                pcall(function()
-                    local w = right:GetStringWidth()
-                    if w and not (issecretvalue and issecretvalue(w)) and w > 0 then
-                        right:SetWidth(w + 2)
-                    else
-                        right:SetWidth(0)
-                    end
-                end)
-            end
-        end
     end
 end
 
@@ -713,7 +574,7 @@ local function AddSummaryLines(tooltip, unit, summary)
 end
 
 -- ============================================================
--- 追加：每个地下城的最佳层数与分数（带图标，层数右对齐）
+-- 追加：每个地下城的最佳层数与分数（带图标）
 -- ============================================================
 local function AddDungeonScores(tooltip, summary)
     if not summary or not summary.runs then return end
@@ -796,13 +657,11 @@ local function AddDungeonScores(tooltip, summary)
         end
         tooltip:AddDoubleLine(e.left, right,
             TITLE_COLOR.r, TITLE_COLOR.g, TITLE_COLOR.b, 1, 1, 1)
-        -- 记录数值行（层数+分数），供等宽列右对齐
-        colAlignLines[tooltip:NumLines()] = true
     end
 end
 
 -- ============================================================
--- 追加：团本进度（带图标，中文难度，右对齐）
+-- 追加：团本进度（带图标，中文难度）
 -- ============================================================
 local function AddRaidLines(tooltip, guid)
     local entry = raidCache[guid]
@@ -823,8 +682,6 @@ local function AddRaidLines(tooltip, guid)
                     local right = format("|cff%s%s %s|r", diff.color, diff.abbr, text)
                     tooltip:AddDoubleLine(left, right,
                         TITLE_COLOR.r, TITLE_COLOR.g, TITLE_COLOR.b, 1, 1, 1)
-                    -- 记录数值行（难度+进度），供等宽列右对齐
-                    colAlignLines[tooltip:NumLines()] = true
                 end
             end
         end
@@ -910,16 +767,10 @@ local function OnTooltipUnit(tooltip, data)
     if not unit or (issecretvalue and issecretvalue(unit)) then return end
     if SafeBool(UnitIsPlayer(unit)) ~= true then return end
 
-    -- 重置等宽列记录
-    colAlignLines = {}
-
     -- ---- 阶段1：修改已有行（所有玩家） ----
     ModifyNameLine(tooltip, unit)
     ModifyGuildLine(tooltip, unit)
     ModifyLevelAndSpecLine(tooltip, unit)
-
-    -- 记录追加区起点（阶段2新行），用于统一右对齐
-    local appendStart = tooltip:NumLines() + 1
 
     -- ---- 阶段2：满级玩家追加 M+ 与团本信息 ----
     local okLevel, isMaxLevel = pcall(function() return UnitLevel(unit) == MAX_PLAYER_LEVEL end)
@@ -950,11 +801,6 @@ local function OnTooltipUnit(tooltip, data)
         AddTargetOfTarget(tooltip, unit)
     end
 
-    -- ---- 阶段3：追加行右列右对齐 + 数值列等宽 ----
-    RightAlignLines(tooltip, appendStart)
-    AlignNumericCols(tooltip)
-    SingleLineAlign(tooltip, appendStart)
-
     tooltip:Show()
 end
 
@@ -977,6 +823,5 @@ function module:OnDisable()
     progressFrame:UnregisterAllEvents()
     ClearAchievementComparisonUnit()
     pendingGUIDs = {}
-    RestoreAllAnchors()
     Util:Debug("TooltipEnhance: 已禁用")
 end
