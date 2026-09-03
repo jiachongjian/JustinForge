@@ -10,7 +10,8 @@
 --        原"专精 职业"行就地改为职业染色（不折叠、不改字体）
 --     4. 大秘境分数、史诗钥匙（仅自己背包有钥匙时显示，史诗紫色）、
 --        物品等级（套装数 n/5 为 #FF69B4 粉色）
---     5. 每个地下城的最佳层数与分数（带地下城图标）
+--     5. 每个地下城的最佳层数与分数（带地下城图标；限时白色层数带
+--        +N 前缀，非限时灰色层数无前缀）
 --     6. 当前赛季团本进度（带团本图标，中文难度）
 --     7. 目标的目标（>>姓名/你<<，职业染色）
 --     8. 世界悬停提示立即消失：鼠标离开世界单位/对象时跳过暴雪默认的
@@ -591,7 +592,7 @@ local function AddDungeonScores(tooltip, summary)
             local pluses = ""
             local timed = false
             local okFin, isFinished = pcall(function() return run.finishedSuccess end)
-            if okFin and isFinished then
+            if okFin and SafeBool(isFinished) == true then
                 timed = true
                 if info.timeLimit and run.bestRunDurationMS then
                     local okUp, upgrades = pcall(function()
@@ -619,7 +620,9 @@ local function AddDungeonScores(tooltip, summary)
                 level  = run.bestRunLevel,
                 mapScore = run.mapScore,
                 left   = info.tex and format("|T%d:0|t %s", info.tex, info.name) or info.name,
-                right  = format("%s|cffffffff%s|r %s", pluses, levelNum, scoreText),
+                -- 层数：限时白色（带 +N 前缀），非限时灰色
+                right  = format("%s|cff%s%s|r %s", pluses,
+                    timed and "ffffff" or "9d9d9d", levelNum, scoreText),
             })
         end
     end
