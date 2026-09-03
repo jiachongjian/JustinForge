@@ -21,6 +21,8 @@
 --   3. 战斗中无法改安全属性/绑定：记入 pending 表，脱战
 --      （PLAYER_REGEN_ENABLED）后补设；阵容变化
 --      （GROUP_ROSTER_UPDATE）重扫，覆盖动态新建的框体。
+--      注意：EllesmereUI 系列按加载序先于本插件，无法靠
+--      ADDON_LOADED 事件补扫，用定时重扫兜底覆盖晚创建的框体。
 --   4. 禁用时清除覆盖绑定，并把各框体的原属性值还原。
 --
 -- 注意：姓名板（NamePlate）是受保护框体，不支持此功能。
@@ -38,6 +40,7 @@ local strfind = strfind
 
 local CreateFrame = CreateFrame
 local InCombatLockdown = InCombatLockdown
+local GetCVar = GetCVar
 local SetOverrideBindingClick = SetOverrideBindingClick
 local ClearOverrideBindings = ClearOverrideBindings
 
@@ -226,9 +229,9 @@ local function SetupButton()
         focusButton:SetAttribute("type*", "macro")
         -- mouseover 条件：指向空白处时不成立，整行不执行，避免误清当前焦点
         focusButton:SetAttribute("macrotext", "/focus mouseover")
-        -- 同时注册 Down/Up：12.0 的安全按钮依据 CVar ActionButtonUseKeyDown
-        -- 只在按下或抬起其一执行动作，两者都注册则任意 CVar 下恰好触发一次
-        focusButton:RegisterForClicks("AnyDown", "AnyUp")
+        -- 对齐已验证方案（WindTools）：按「按键按下施法」CVar 只注册
+        -- Down/Up 其一，保证一次点击动作恰好执行一次
+        focusButton:RegisterForClicks(GetCVar("ActionButtonUseKeyDown") == "1" and "AnyDown" or "AnyUp")
     end
     SetOverrideBindingClick(focusButton, true, BINDING_KEY, BUTTON_NAME)
     bindingApplied = true
@@ -251,7 +254,7 @@ end
 -- 事件处理
 -- ------------------------------------------------------------
 local eventFrame = CreateFrame("Frame")
-eventFrame:SetScript("OnEvent", function(_, event, arg1)
+eventFrame:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_ENTERING_WORLD" then
         -- 登录锁定已解除且各 UI 框体已创建，是首个可靠初始化时机；
         -- 之后每次进副本/切地图重扫（幂等），覆盖动态新建的框体
@@ -259,13 +262,6 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1)
     elseif event == "GROUP_ROSTER_UPDATE" then
         -- 阵容变化时安全标头会动态创建/回收子按钮，重扫补设
         ScanFrames()
-    elseif event == "ADDON_LOADED" then
-        -- EllesmereUI 子插件可能在本插件之后加载，其框体可用后补扫
-        if arg1 == "EllesmereUI"
-            or arg1 == "EllesmereUIUnitFrames"
-            or arg1 == "EllesmereUIRaidFrames" then
-            ScanFrames()
-        end
     elseif event == "PLAYER_REGEN_ENABLED" then
         if module.enabled then
             if setupPending then
@@ -293,9 +289,17 @@ end)
 function module:OnEnable()
     eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
     eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
-    eventFrame:RegisterEvent("ADDON_LOADED")
     eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
     SetupAll()
+    -- EllesmereUI 系列按加载序先于本插件完成加载（收不到其
+    -- ADDON_LOADED 事件），且框体可能延迟到 PEW 之后才 spawn；
+    -- 定时重扫兜底（幂等），覆盖所有晚创建的框体
+    C_Timer.After(2, function()
+        if module.enabled then ScanFrames() end
+    end)
+    C_Timer.After(6, function()
+        if module.enabled then ScanFrames() end
+    end)
     Util:Debug("QuickFocus: 已启用 Shift+右键快速焦点")
 end
 
@@ -306,7 +310,6 @@ function module:OnDisable()
     setupPending = false
     eventFrame:UnregisterEvent("PLAYER_ENTERING_WORLD")
     eventFrame:UnregisterEvent("GROUP_ROSTER_UPDATE")
-    eventFrame:UnregisterEvent("ADDON_LOADED")
     if not InCombatLockdown() then
         if focusButton and bindingApplied then
             ClearOverrideBindings(focusButton)
