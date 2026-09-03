@@ -120,7 +120,7 @@ L["HideCrafter_Desc"] = "在装备鼠标提示中隐藏制造业装备上的绿�
 
 -- 模块13：快速设置焦点目标
 L["QuickFocus_Name"] = "快速设置焦点目标"
-L["QuickFocus_Desc"] = "按住 Shift 并用右键点击场景中的单位、暴雪默认头像/小队/团队框体，或 EllesmereUI 单位框体/小队/团队框体，将其设为焦点。自动适配 EllesmereUI 的框体来源设置。禁用后自动还原框体属性。不支持姓名板。"
+L["QuickFocus_Desc"] = "按住 Shift 并用左键点击场景中的单位、暴雪默认头像/小队/团队框体，或 EllesmereUI 单位框体/小队/团队框体，将其设为焦点。自动适配 EllesmereUI 的框体来源设置。禁用后自动还原框体属性。不支持姓名板。"
 
 -- 模块16：成就界面默认未完成
 L["AchievementIncomplete_Name"] = "成就默认筛选未完成"

@@ -1,7 +1,7 @@
 -- ============================================================
 -- JustinForge 模块14: 快速设置焦点目标 (QuickFocus.lua)
 -- ============================================================
--- 功能：按住 Shift 并用右键点击单位，将其设为焦点；再点一次其他
+-- 功能：按住 Shift 并用左键点击单位，将其设为焦点；再点一次其他
 --   单位切换焦点。支持：
 --     1. 场景中的 3D 单位（隐藏安全按钮 + 覆盖绑定实现）
 --     2. 暴雪默认框体：玩家/宠物/目标/焦点/小队/首领/竞技场/
@@ -10,12 +10,12 @@
 --
 -- 实现方式（参照 ElvUI_WindTools Modules/UnitFrames/QuickFocus.lua，
 -- 该实现已在本版本游戏内验证可用）：
---   1. 框体路径：为单位框体设置安全属性 shift-type2="focus"。
+--   1. 框体路径：为单位框体设置安全属性 shift-type1="focus"。
 --      鼠标悬停在可点击框体上时点击被框体消耗，不会进入按键绑定
 --      系统，只能靠框体自身的修饰键点击属性响应。
 --   2. 场景路径：创建隐藏 SecureActionButtonTemplate 按钮
 --      （宏文本 /focus mouseover），再用 SetOverrideBindingClick
---      把 SHIFT-BUTTON2 映射到该按钮。鼠标悬停在 3D 世界单位上
+--      把 SHIFT-BUTTON1 映射到该按钮。鼠标悬停在 3D 世界单位上
 --      时点击进入绑定系统触发按钮；宏的 mouseover 条件在指向空白
 --      处时不成立，不会误清当前焦点。
 --   3. 战斗中无法改安全属性/绑定：记入 pending 表，脱战
@@ -55,8 +55,8 @@ local module = ns.Module:Register({
 })
 
 local BUTTON_NAME = "JustinForgeQuickFocusButton"
-local BINDING_KEY = "SHIFT-BUTTON2"
-local ATTRIBUTE   = "shift-type2"   -- 修饰键+按键对应的框体安全属性名
+local BINDING_KEY = "SHIFT-BUTTON1"
+local ATTRIBUTE   = "shift-type1"   -- 修饰键+按键对应的框体安全属性名（type1=左键）
 
 local focusButton             -- 隐藏安全按钮（懒创建）
 local bindingApplied = false  -- 覆盖绑定是否已应用
@@ -130,7 +130,7 @@ local ELLESMERE_HEADERS = {
 }
 
 -- ------------------------------------------------------------
--- SetupFrame: 为单个单位框体设置 shift+右键 = 焦点
+-- SetupFrame: 为单个单位框体设置 shift+左键 = 焦点
 -- ------------------------------------------------------------
 local function SetupFrame(frame)
     if not frame or hookedFrames[frame] ~= nil then
@@ -300,7 +300,7 @@ function module:OnEnable()
     C_Timer.After(6, function()
         if module.enabled then ScanFrames() end
     end)
-    Util:Debug("QuickFocus: 已启用 Shift+右键快速焦点")
+    Util:Debug("QuickFocus: 已启用 Shift+左键快速焦点")
 end
 
 -- ------------------------------------------------------------
