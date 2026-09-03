@@ -33,7 +33,6 @@ L["Error_ConfigNoAPI"] = "设置面板初始化失败：游戏设置接口（Set
 L["Error_ConfigModule"] = "设置面板注册「%s」的设置项时发生异常：%s"
 L["Error_OptionCallback"] = "设置项「%s」回调执行时发生异常：%s"
 L["Error_Init"] = "插件初始化过程中发生异常：%s"
-L["Error_FinderHook"] = "公会查找器增强刷新时发生异常：%s"
 
 -- ---- 模块字符串 ----
 -- 每个模块需要两个字符串：
@@ -130,21 +129,6 @@ L["AchievementIncomplete_Desc"] = "每次打开成就界面时，自动将顶部
 -- 模块18：拾取窗口向下堆叠
 L["LootStackDirection_Name"] = "拾取窗口向下堆叠"
 L["LootStackDirection_Desc"] = "团队装备 Roll 窗口与「你获得了 XXX」类拾取提示（物品/货币/金钱/装备升级），在多个同时出现时由向上堆叠改为向下堆叠：第一个保持原本位置不变，后续新出现的依次向屏幕下方增长。不修改窗口尺寸、布局、动画、倒计时等任何其他行为，禁用后立即恢复原生堆叠。"
-
--- 模块19：公会查找器增强
-L["GuildFinderEnhance_Name"] = "公会查找器增强"
-L["GuildFinderEnhance_Desc"] = "增强未加入公会时的「查找公会」界面：打开时自动搜索招募中的公会（可关闭）；补充排序功能（相关度/人数最多/最新招募，暴雪默认对公会搜索隐藏）；鼠标悬停公会卡片时额外显示语言、跨阵营、装等要求、仅满级与招募更新时间。注：12.0 起暴雪已移除公会招募的「活动时间」数据，无法展示。"
-L["GFE_AutoSearch"] = "打开查找器时自动搜索"
-L["GFE_SortFormat"] = "排序：%s"
-L["GFE_SortRelevance"] = "相关度"
-L["GFE_SortMembers"] = "人数最多"
-L["GFE_SortNewest"] = "最新招募"
-L["GFE_TipLanguage"] = "语言: %s"
-L["GFE_TipCrossFaction"] = "跨阵营公会"
-L["GFE_TipMinIlvl"] = "要求装等: %d"
-L["GFE_TipMaxLevelOnly"] = "仅招募满级玩家"
-L["GFE_TipUpdatedToday"] = "招募信息: 今天更新"
-L["GFE_TipUpdatedDays"] = "招募信息: %d 天前更新"
 
 -- 模块15：成就对比界面报错修复
 L["AchievementUiFix_Name"] = "成就对比报错修复"

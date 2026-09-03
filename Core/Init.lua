@@ -60,8 +60,6 @@ local defaults = {
             iconOffsetX = 0, iconOffsetY = 0, countOffsetX = 0 },
         -- 功能18：拾取窗口向下堆叠（Roll 窗口 + 获得物品 Toast）
         lootStackDirection = { enabled = true },
-        -- 功能19：公会查找器增强（自动搜索 + 排序 + 卡片提示增强）
-        guildFinderEnhance = { enabled = true, autoSearch = true },
     },
 }
 

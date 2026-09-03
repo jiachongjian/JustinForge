@@ -73,7 +73,6 @@ local CATEGORY_LAYOUT = {
         "macroEnhance", "mapCenter", "merchantExpand",
         "quickFocus", "hideCrafter", "teleportUnequip", "chatHideLearn",
         "druidFlightForm", "achievementIncomplete", "lootStackDirection",
-        "guildFinderEnhance",
     } },
     { keys = { "characterStats" } },
     { keys = { "chatChannelBar" } },

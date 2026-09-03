@@ -41,5 +41,4 @@ Modules\AchievementUiFix.lua
 Modules\AchievementIncomplete.lua
 Modules\BigWigsEnhance.lua
 Modules\LootStackDirection.lua
-Modules\GuildFinderEnhance.lua
 Core\Config.lua
