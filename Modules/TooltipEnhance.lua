@@ -16,6 +16,8 @@
 --     7. 目标的目标（>>姓名/你<<，职业染色）
 --     8. 世界悬停提示立即消失：鼠标离开世界单位/对象时跳过暴雪默认的
 --        「停留 1 秒 + 淡出 1 秒」，提示框立刻隐藏
+--     9. 各类 ID 显示：物品/法术（含光环）/货币/玩具/宠物/任务提示框的
+--        最后一行追加对应 ID（可开关，见设置面板）
 --   （字号保持原生：原 15 号字功能已移除，避免污染池化复用的 FontString）
 --
 -- 实现原理：
@@ -33,6 +35,10 @@
 --      1 秒保持不透明，再花 1 秒淡出），触发时立即 Hide。注意 GameTooltip
 --      经 XML mixin 属性在创建时已拷贝 GameTooltipDataMixin 的函数副本，
 --      事后 hook GameTooltipDataMixin 本身不会影响该实例，必须 hook 实例
+--   9. ID 显示：TooltipDataProcessor.AddTooltipPostCall 为官方回调机制，
+--      各插件回调互不影响；仅 AddLine 追加一行（行 FontString 随提示框
+--      清空自动回收，无持久残留），且限定暴雪原生提示框（GameTooltip /
+--      ItemRefTooltip / 对比购物提示），第三方插件自有提示框不受影响
 -- ============================================================
 
 local addonName, ns = ...
@@ -121,9 +127,10 @@ local module = ns.Module:Register({
     name           = L["TooltipEnhance_Name"],
     description    = L["TooltipEnhance_Desc"],
     defaultEnabled = true,
+    options = {
+        { type = "checkbox", key = "showIDs", name = L["TooltipEnhance_ShowIDs"], tooltip = L["TooltipEnhance_ShowIDsTip"], default = true },
+    },
 })
-
--- 无可配置项：仅追加信息与改换文字颜色/格式，字号/字体保持原生
 
 -- ============================================================
 -- 数据缓存
@@ -809,6 +816,58 @@ end
 
 -- 回调无法卸载，仅注册一次
 TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, OnTooltipUnit)
+
+-- ============================================================
+-- 各类 ID 显示（物品/法术/货币/玩具/宠物/任务）
+-- 仅向暴雪原生提示框（GameTooltip / ItemRefTooltip / 购物对比提示）
+-- 底部追加一行灰色 ID 文本；AddTooltipPostCall 为官方回调机制，各插件
+-- 回调互不影响，且追加行随提示框清空自动回收，不污染第三方插件内容。
+-- ============================================================
+
+-- 暴雪原生提示框白名单（第三方插件自有提示框一律跳过）
+local function IsNativeTooltip(tooltip)
+    return tooltip == GameTooltip
+        or tooltip == ItemRefTooltip
+        or tooltip == ShoppingTooltip1
+        or tooltip == ShoppingTooltip2
+        or tooltip == ItemRefShoppingTooltip1
+        or tooltip == ItemRefShoppingTooltip2
+end
+
+local function OnTooltipAddID(tooltip, data, label)
+    if not module.enabled then return end
+    if not IsNativeTooltip(tooltip) then return end
+    -- 设置面板开关（值由 Settings 绑定实时写入 DB，运行时直接读取）
+    local db = ns.db and ns.db.profile and ns.db.profile.tooltipEnhance
+    if db and db.showIDs == false then return end
+    if not data or data.id == nil then return end
+    if issecretvalue and issecretvalue(data.id) then return end
+    local id = tonumber(data.id)
+    if not id then return end
+    tooltip:AddLine(format("|cff9d9d9d%s:|r |cffffffff%d|r", label, id))
+    tooltip:Show()
+end
+
+-- 类型与标签对照（CompanionPet 的 data.id 为物种 ID；UnitAura 为光环法术 ID）
+local ID_TOOLTIP_TYPES = {
+    { "Item",         L["TE_ID_Item"]     },
+    { "Spell",        L["TE_ID_Spell"]    },
+    { "UnitAura",     L["TE_ID_Spell"]    },
+    { "Currency",     L["TE_ID_Currency"] },
+    { "Toy",          L["TE_ID_Toy"]      },
+    { "CompanionPet", L["TE_ID_Pet"]      },
+    { "Quest",        L["TE_ID_Quest"]    },
+}
+
+-- 回调无法卸载，仅注册一次；禁用时通过模块开关短路返回
+for _, info in ipairs(ID_TOOLTIP_TYPES) do
+    local dataType = Enum.TooltipDataType and Enum.TooltipDataType[info[1]]
+    if dataType then
+        TooltipDataProcessor.AddTooltipPostCall(dataType, function(tooltip, data)
+            OnTooltipAddID(tooltip, data, info[2])
+        end)
+    end
+end
 
 -- ============================================================
 -- OnEnable: 模块启用
