@@ -16,6 +16,8 @@
 --        - 奶骑/防护骑/防护战：需要单手武器 + 盾牌
 --        - 生存猎：需要双手近战武器（拿弓枪弩/单手武器时
 --          猛禽一击、猫鼬撕咬等核心技能无法施放）
+--        - 兽王/射击猎：需要远程武器（拿近战武器时
+--          杀戮命令/瞄准射击等核心技能无法施放）
 --
 -- 实现要点：
 --   - 工程学判定：GetProfessions → GetProfessionInfo 的
@@ -81,6 +83,10 @@ local DAGGER_SPECS = { [259] = true, [261] = true }
 -- （猛禽一击/猫鼬撕咬等核心技能强制要求双手近战武器，
 --   拿弓枪弩或单手武器时技能无法施放）
 local MELEE_2H_SPECS = { [255] = true }
+-- 需要远程武器的专精：兽王猎(253)、射击猎(254)
+-- （杀戮命令/瞄准射击等核心技能强制要求弓/枪/弩，
+--   拿近战武器时技能无法施放）
+local RANGED_SPECS = { [253] = true, [254] = true }
 -- 双持专精：主手为单手武器时副手必须有武器
 -- 狂暴战(72) 冰DK(251) 三系贼(259/260/261) 增强萨(263)
 -- 酒仙(268) 踏风(269) 浩劫(577) 复仇(581)
@@ -320,6 +326,10 @@ local function CheckWeapons()
         -- 生存猎：主手必须是双手近战武器（远程武器/单手武器均不可用）
         if MELEE_2H_SPECS[specID] and mhLoc ~= "INVTYPE_2HWEAPON" then
             messages[#messages + 1] = L["EA_NeedMelee2H"]
+        end
+        -- 兽王/射击猎：主手必须是远程武器（弓/枪/弩 = INVTYPE_RANGED）
+        if RANGED_SPECS[specID] and mhLoc ~= "INVTYPE_RANGED" then
+            messages[#messages + 1] = L["EA_NeedRanged"]
         end
     end
 
