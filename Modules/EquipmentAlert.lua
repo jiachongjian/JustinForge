@@ -6,8 +6,8 @@
 --   脱战后恢复）。检测内容：
 --     1. 工程学腰带：已学习工程学，但未装备腰带，
 --        或腰带未附魔「氮气推进器」（附魔ID 4223）
---     2. 武器缺失：未装备主手武器；双持专精主手为单手武器
---        时副手未装备武器
+--     2. 武器缺失：未装备主手武器；主手为单手武器（含魔杖）
+--        时副手为空；双持专精主手为单手武器时副手未装备武器
 --     3. 专精匹配：
 --        - 武器主属性与当前专精主属性不符
 --          （如狂徒切敏锐后仍用敏捷外的错误属性武器/
@@ -92,10 +92,11 @@ local DUAL_WIELD_SPECS = {
 }
 
 -- 双手武器装备位置（这些位置装备的武器不要求副手）
+-- 注意：魔杖（INVTYPE_RANGEDRIGHT）不在此列——魔杖是装在
+-- 主手槽位的单手武器，需要搭配副手物品
 local TWO_HAND_LOCS = {
     ["INVTYPE_2HWEAPON"] = true,
     ["INVTYPE_RANGED"] = true,
-    ["INVTYPE_RANGEDRIGHT"] = true,
 }
 
 -- 武器主属性检测键（GetItemStats 表键，顺序对应 STAT_INDEX）
@@ -299,6 +300,11 @@ local function CheckWeapons()
             if not ohLink or ohClass ~= CLASS_WEAPON then
                 messages[#messages + 1] = L["EA_NoOffHand"]
             end
+        -- 其余专精：主手为单手武器（含魔杖）时副手不能空置
+        -- （法系主手魔杖/单手武器忘带副手物品的场景；
+        --   双持专精主手为双手武器时也走这里，但 is2H 为真不触发）
+        elseif not is2H and not ohLink then
+            messages[#messages + 1] = L["EA_NoOffHandItem"]
         end
         -- 匕首专精：刺杀/敏锐需要双持匕首
         if DAGGER_SPECS[specID] then
