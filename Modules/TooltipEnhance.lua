@@ -214,8 +214,13 @@ if GameTooltip and GameTooltip.FadeOut then
 end
 
 -- 获取职业颜色 hex 和 RGB
+-- 12.0 中 UnitClass 返回的 classFile 可能是 secret string，
+-- secret 值不能用作表键（索引 RAID_CLASS_COLORS 会报错），回退白色
 local function GetClassColor(classFile)
-    local color = RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile]
+    if issecretvalue and issecretvalue(classFile) then
+        return "ffffff", 1, 1, 1
+    end
+    local color = classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile]
     if color then
         return format("%02x%02x%02x", color.r * 255, color.g * 255, color.b * 255), color.r, color.g, color.b
     end
