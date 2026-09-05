@@ -60,6 +60,8 @@ local defaults = {
             iconOffsetX = 0, iconOffsetY = 0, countOffsetX = 0 },
         -- 功能18：拾取窗口向下堆叠（Roll 窗口 + 获得物品 Toast）
         lootStackDirection = { enabled = true },
+        -- 功能19：装备错误提醒（posX/posY 为相对屏幕中心的偏移，默认屏幕中上方）
+        equipmentAlert = { enabled = true, posX = 0, posY = 260, fontSize = 18 },
     },
 }
 

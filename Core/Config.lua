@@ -77,6 +77,7 @@ local CATEGORY_LAYOUT = {
     { keys = { "characterStats" } },
     { keys = { "chatChannelBar" } },
     { keys = { "tooltipEnhance" } },
+    { keys = { "equipmentAlert" } },
 }
 
 -- ------------------------------------------------------------

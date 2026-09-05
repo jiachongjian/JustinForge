@@ -41,4 +41,5 @@ Modules\AchievementUiFix.lua
 Modules\AchievementIncomplete.lua
 Modules\BigWigsEnhance.lua
 Modules\LootStackDirection.lua
+Modules\EquipmentAlert.lua
 Core\Config.lua
