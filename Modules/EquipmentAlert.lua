@@ -1,7 +1,7 @@
 -- ============================================================
 -- JustinForge 模块19: 装备错误提醒 (EquipmentAlert.lua)
 -- ============================================================
--- 功能：当检测到明显的装备错误时，在屏幕上显示白色文字提醒
+-- 功能：当检测到明显的装备错误时，在屏幕上显示彩色文字提醒
 --   （多条提醒以设定位置为顶部锚点向下堆叠；战斗中自动隐藏，
 --   脱战后恢复）。检测内容：
 --     1. 工程学腰带：已学习工程学，但未装备腰带，
@@ -34,7 +34,8 @@
 --     武器无主属性（旧世界武器等）时跳过该项检测避免误报
 --   - 刷新触发：装备变更 / 专精切换 / 技能线变化（学专业）/
 --     背包变化（补附魔），0.2 秒合并节流
---   - 提醒颜色固定白色（用户要求），仅位置与字号可配置
+--   - 提醒颜色按类别区分（用户要求）：武器类提醒 = 史诗紫，
+--     氮气腰带类提醒 = 精良蓝；仅位置与字号可配置
 --   - 至暗之夜安全值防护：比较/算术前一律 issecretvalue 防护
 -- ============================================================
 
@@ -73,6 +74,14 @@ local CLASS_WEAPON = 2
 local SUBCLASS_DAGGER = 15
 local CLASS_ARMOR = 4
 local SUBCLASS_SHIELD = 6
+
+-- 提醒颜色：武器类 = 史诗紫（#A335EE），氮气腰带类 = 精良蓝（#0070DD）
+-- 优先取系统品质色表 ITEM_QUALITY_COLORS，缺失时回退标准十六进制值
+local qColors = ITEM_QUALITY_COLORS
+local WEAPON_COLOR = qColors and qColors[Enum.ItemQuality.Epic]
+    or { r = 0.639, g = 0.208, b = 0.035 }
+local BELT_COLOR = qColors and qColors[Enum.ItemQuality.Rare]
+    or { r = 0.118, g = 0.514, b = 1.0 }
 
 -- 专精规则表（key = specID）
 -- 需要单手武器+盾牌的专精：奶骑(65)、防护骑(66)、防护战(73)
@@ -140,7 +149,7 @@ local module = ns.Module:Register({
 -- ============================================================
 local alertFrame          -- 提醒容器框架（懒创建）
 local linePool = {}       -- FontString 池（按下标复用）
-local messages = {}       -- 当前扫描出的提醒文本列表
+local messages = {}       -- 当前提醒列表（{ text, color } 结构）
 local eventFrame          -- 事件框架
 local scanPending = false -- 是否已有待执行的合并扫描
 
@@ -150,6 +159,11 @@ local scanPending = false -- 是否已有待执行的合并扫描
 local function GetOption(key)
     local db = ns.db and ns.db.profile and ns.db.profile[module.key]
     return db and db[key]
+end
+
+-- AddMessage: 追加一条提醒（color 为 { r, g, b } 颜色表）
+local function AddMessage(text, color)
+    messages[#messages + 1] = { text = text, color = color }
 end
 
 -- ============================================================
@@ -171,7 +185,7 @@ local function GetLine(index)
     if not fs then
         fs = alertFrame:CreateFontString(nil, "OVERLAY")
         fs:SetFont(STANDARD_TEXT_FONT, DEFAULT_FONT_SIZE, "OUTLINE")
-        fs:SetTextColor(1, 1, 1, 1)   -- 颜色固定白色
+        -- 颜色在 UpdateDisplay 中按消息类别逐行设置
         linePool[index] = fs
     end
     return fs
@@ -251,13 +265,13 @@ local function CheckBelt()
     if not HasEngineering() then return end
     local beltLink = GetInventoryItemLink("player", SLOT_WAIST)
     if not beltLink then
-        messages[#messages + 1] = L["EA_NoBelt"]
+        AddMessage(L["EA_NoBelt"], BELT_COLOR)
         return
     end
     -- secret string 无法解析（受污染执行路径下的罕见情况），跳过而非误报
     if issecretvalue(beltLink) then return end
     if GetBeltEnchantID(beltLink) ~= NITRO_BOOST_ENCHANT then
-        messages[#messages + 1] = L["EA_NoNitro"]
+        AddMessage(L["EA_NoNitro"], BELT_COLOR)
     end
 end
 
@@ -288,7 +302,7 @@ end
 local function CheckWeaponStat(link, expectedIndex, message)
     local weaponStat = GetWeaponPrimaryStat(link)
     if weaponStat and weaponStat ~= expectedIndex then
-        messages[#messages + 1] = message
+        AddMessage(message, WEAPON_COLOR)
     end
 end
 
@@ -309,7 +323,7 @@ local function CheckWeapons()
     local ohLink = GetInventoryItemLink("player", SLOT_OFFHAND)
 
     if not mhLink then
-        messages[#messages + 1] = L["EA_NoMainHand"]
+        AddMessage(L["EA_NoMainHand"], WEAPON_COLOR)
         -- 主手都没有时仍提示副手为空没有意义，直接结束
         return
     end
@@ -325,21 +339,21 @@ local function CheckWeapons()
         -- 防护专精：单手武器 + 盾牌
         if SHIELD_SPECS[specID] then
             if is2H then
-                messages[#messages + 1] = L["EA_NeedOneHand"]
+                AddMessage(L["EA_NeedOneHand"], WEAPON_COLOR)
             end
             if not ohLink or not (ohClass == CLASS_ARMOR and ohSub == SUBCLASS_SHIELD) then
-                messages[#messages + 1] = L["EA_NeedShield"]
+                AddMessage(L["EA_NeedShield"], WEAPON_COLOR)
             end
         -- 双持专精：主手为单手武器时副手必须是武器
         elseif DUAL_WIELD_SPECS[specID] and not is2H then
             if not ohLink or ohClass ~= CLASS_WEAPON then
-                messages[#messages + 1] = L["EA_NoOffHand"]
+                AddMessage(L["EA_NoOffHand"], WEAPON_COLOR)
             end
         -- 其余专精：主手为单手武器（含魔杖）时副手不能空置
         -- （法系主手魔杖/单手武器忘带副手物品的场景；
         --   双持专精主手为双手武器时也走这里，但 is2H 为真不触发）
         elseif not is2H and not ohLink then
-            messages[#messages + 1] = L["EA_NoOffHandItem"]
+            AddMessage(L["EA_NoOffHandItem"], WEAPON_COLOR)
         end
         -- 匕首专精：刺杀/敏锐需要双持匕首
         if DAGGER_SPECS[specID] then
@@ -349,16 +363,16 @@ local function CheckWeapons()
                 ohDagger = (ohSub == SUBCLASS_DAGGER)
             end
             if not mhDagger or not ohDagger then
-                messages[#messages + 1] = L["EA_NeedDaggers"]
+                AddMessage(L["EA_NeedDaggers"], WEAPON_COLOR)
             end
         end
         -- 生存猎：主手必须是双手近战武器（远程武器/单手武器均不可用）
         if MELEE_2H_SPECS[specID] and mhLoc ~= "INVTYPE_2HWEAPON" then
-            messages[#messages + 1] = L["EA_NeedMelee2H"]
+            AddMessage(L["EA_NeedMelee2H"], WEAPON_COLOR)
         end
         -- 兽王/射击猎：主手必须是远程武器（弓/枪/弩 = INVTYPE_RANGED）
         if RANGED_SPECS[specID] and mhLoc ~= "INVTYPE_RANGED" then
-            messages[#messages + 1] = L["EA_NeedRanged"]
+            AddMessage(L["EA_NeedRanged"], WEAPON_COLOR)
         end
     end
 
@@ -384,8 +398,10 @@ local function UpdateDisplay()
         return
     end
     for i = 1, #messages do
+        local msg = messages[i]
         local fs = GetLine(i)
-        fs:SetText(messages[i])
+        fs:SetText(msg.text)
+        fs:SetTextColor(msg.color.r, msg.color.g, msg.color.b)
         fs:Show()
     end
     for i = #messages + 1, #linePool do
