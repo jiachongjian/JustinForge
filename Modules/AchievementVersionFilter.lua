@@ -177,10 +177,13 @@ local hooked = false
 local selectedVersion = nil   -- 当前选中版本 key（nil = 全部版本）
 local expansionCache = {}     -- 分类ID → 资料片基准版本（false = 已判定无）
 local versionCache = {}       -- 成就ID → 版本 key（false = 未识别）
-local versionCounts = nil     -- 版本 key → 成就数量（首次打开菜单时扫描）
+local versionCounts = nil     -- 版本 key → 成就数量（分帧扫描填充）
 local scanTotal = 0           -- 扫描到的成就总数（诊断用）
 local scanUnversioned = 0     -- 未能识别版本的成就数（诊断用）
 local unmatchedCategories = nil -- 无资料片归属的分类名 → 成就数（诊断用）
+local scanState = nil         -- 分帧扫描迭代状态（nil = 未在扫描）
+local scanning = false        -- 是否正在后台扫描
+local scanTicker = nil        -- 分帧扫描的 C_Timer 句柄
 
 -- ============================================================
 -- IsPersonalView: 是否处于个人成就标签页
@@ -265,45 +268,74 @@ local function ResolveVersion(id, name, description, categoryID)
 end
 
 -- ============================================================
--- ScanVersions: 扫描全部个人成就，统计各版本数量（一次性）
--- 只显示有成就的版本，避免菜单出现永远为空的选项
--- ============================================================
-local function ScanVersions()
-    if versionCounts then return end
-    versionCounts = {}
-    unmatchedCategories = {}
+-- BeginScan: 启动后台分帧扫描（每帧预算 4ms，约 2 秒完成）
+-- 数千个成就的遍历若单帧同步执行会造成数秒卡顿，
+-- 因此用 C_Timer 逐帧推进；扫描期间 versionCounts 渐进填充，
+-- 菜单打开时显示已扫到的版本，扫完后即为完整结果。
+-- 登录后由 PLAYER_ENTERING_WORLD 延迟 10 秒启动，避开加载高峰期
+local SCAN_BUDGET_MS = 4
+
+local function BeginScan()
+    if versionCounts or scanning then return end
     if type(GetCategoryList) ~= "function" then return end
 
     local categories = GetCategoryList()
     if type(categories) ~= "table" then return end
 
-    for _, entry in ipairs(categories) do
-        -- GetCategoryList 元素为分类ID（兼容表形式 {id=...}）
-        local categoryID = type(entry) == "table" and entry.id or entry
-        if type(categoryID) == "number" then
-            local numAchievements = GetCategoryNumAchievements(categoryID, true)
-            if type(numAchievements) == "number" and numAchievements > 0 then
-                scanTotal = scanTotal + numAchievements
-                -- 诊断：记录无法归属资料片的分类名（识别命名不匹配）
-                if not CategoryExpansion(categoryID) then
-                    local catName = GetCategoryInfo(categoryID)
-                    local key = tostring(catName or categoryID)
-                    unmatchedCategories[key] = (unmatchedCategories[key] or 0) + numAchievements
+    versionCounts = {}
+    unmatchedCategories = {}
+    scanning = true
+    scanState = { cats = categories, cat = 1, ach = 0, numAch = 0, categoryID = nil }
+
+    scanTicker = C_Timer.NewTicker(0, function()
+        local deadline = debugprofilestop() + SCAN_BUDGET_MS
+        local st = scanState
+        repeat
+            -- 当前分类耗尽则推进到下一个含成就的分类
+            while st.ach >= st.numAch do
+                if st.cat > #st.cats then
+                    scanning = false
+                    scanState = nil
+                    if scanTicker then
+                        scanTicker:Cancel()
+                        scanTicker = nil
+                    end
+                    return
                 end
-                for index = 1, numAchievements do
-                    local id, name, _, _, _, _, _, description = GetAchievementInfo(categoryID, index)
-                    if id then
-                        local version = ResolveVersion(id, name, description, categoryID)
-                        if version then
-                            versionCounts[version] = (versionCounts[version] or 0) + 1
-                        else
-                            scanUnversioned = scanUnversioned + 1
+                local entry = st.cats[st.cat]
+                st.cat = st.cat + 1
+                local categoryID = type(entry) == "table" and entry.id or entry
+                st.numAch = 0
+                st.ach = 0
+                st.categoryID = nil
+                if type(categoryID) == "number" then
+                    local numAchievements = GetCategoryNumAchievements(categoryID, true)
+                    if type(numAchievements) == "number" and numAchievements > 0 then
+                        st.categoryID = categoryID
+                        st.numAch = numAchievements
+                        scanTotal = scanTotal + numAchievements
+                        -- 诊断：记录无法归属资料片的分类名（识别命名不匹配）
+                        if not CategoryExpansion(categoryID) then
+                            local catName = GetCategoryInfo(categoryID)
+                            local key = tostring(catName or categoryID)
+                            unmatchedCategories[key] = (unmatchedCategories[key] or 0) + numAchievements
                         end
                     end
                 end
             end
-        end
-    end
+            -- 处理一个成就
+            st.ach = st.ach + 1
+            local id, name, _, _, _, _, _, description = GetAchievementInfo(st.categoryID, st.ach)
+            if id then
+                local version = ResolveVersion(id, name, description, st.categoryID)
+                if version then
+                    versionCounts[version] = (versionCounts[version] or 0) + 1
+                else
+                    scanUnversioned = scanUnversioned + 1
+                end
+            end
+        until debugprofilestop() >= deadline
+    end)
 end
 
 -- ============================================================
@@ -312,8 +344,12 @@ end
 -- ============================================================
 SLASH_JFAVF1 = "/jfavf"
 SlashCmdList["JFAVF"] = function()
-    ScanVersions()
-    print("|cff00ff00[JustinForge]|r 成就版本统计：")
+    BeginScan()
+    if scanning then
+        print("|cff00ff00[JustinForge]|r 成就版本统计（仍在后台扫描，以下为当前进度）：")
+    else
+        print("|cff00ff00[JustinForge]|r 成就版本统计：")
+    end
     for _, info in ipairs(VERSIONS) do
         local count = versionCounts[info.key] or 0
         if count > 0 then
@@ -378,7 +414,7 @@ local function InjectMenu(_, rootDescription)
     if not module.enabled then return end
     if not IsPersonalView() then return end
 
-    ScanVersions()
+    BeginScan()
 
     local submenu = rootDescription:CreateButton(L["AVF_Version"] or "版本")
     submenu:CreateRadio(
@@ -415,17 +451,24 @@ end
 function module:OnEnable()
     if not eventFrame then
         eventFrame = CreateFrame("Frame")
-        eventFrame:SetScript("OnEvent", function(_, _, loadedAddon)
-            if loadedAddon == "Blizzard_AchievementUI" then
+        eventFrame:SetScript("OnEvent", function(_, event, arg1)
+            if event == "ADDON_LOADED" and arg1 == "Blizzard_AchievementUI" then
                 InstallHook()
+            elseif event == "PLAYER_ENTERING_WORLD" then
+                -- 登录/进位面后延迟 10 秒启动后台分帧扫描，
+                -- 避开加载高峰期，避免与游戏自身的登录负载叠加
+                C_Timer.After(10, BeginScan)
             end
         end)
     end
     eventFrame:RegisterEvent("ADDON_LOADED")
+    eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 
     if C_AddOns.IsAddOnLoaded("Blizzard_AchievementUI") then
         InstallHook()
     end
+    -- 模块在世界加载后被手动启用时，同样延迟启动扫描
+    C_Timer.After(10, BeginScan)
 end
 
 -- ============================================================
@@ -435,5 +478,16 @@ function module:OnDisable()
     if eventFrame then
         eventFrame:UnregisterAllEvents()
     end
+    -- 取消未完成的后台扫描；若扫描中断则丢弃部分结果，重新启用时从头扫描
+    if scanTicker then
+        scanTicker:Cancel()
+        scanTicker = nil
+        versionCounts = nil
+        scanTotal = 0
+        scanUnversioned = 0
+        unmatchedCategories = nil
+    end
+    scanning = false
+    scanState = nil
     SetVersion(nil)
 end
