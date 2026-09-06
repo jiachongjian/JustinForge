@@ -39,6 +39,7 @@ Modules\HideCrafter.lua
 Modules\QuickFocus.lua
 Modules\AchievementUiFix.lua
 Modules\AchievementIncomplete.lua
+Modules\AchievementVersionFilter.lua
 Modules\BigWigsEnhance.lua
 Modules\LootStackDirection.lua
 Modules\EquipmentAlert.lua

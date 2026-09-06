@@ -22,8 +22,8 @@
 -- 实现要点：
 --   - 工程学判定：GetProfessions → GetProfessionInfo 的
 --     skillLine == 202（工程学基础技能线，跨资料片不变）
---   - 氮气推进器：物品链接字段解析，item:itemID:enchantID:...
---     第 3 段为附魔ID，氮气推进器固定为 4223
+--   - 氮气推进器：解析物品链接末段的 extraEnchantID 字段（9.1 起
+--     匠械附魔写入该字段而非常规附魔段），氮气推进器附魔ID 固定为 4223
 --   - 专精判定：GetSpecialization + GetSpecializationInfo
 --     第 6 返回值为专精主属性（1=力量 2=敏捷 4=智力）
 --   - 武器类别判定：C_Item.GetItemInfoInstant 的
@@ -216,6 +216,36 @@ local function HasEngineering()
     return false
 end
 
+-- GetBeltEnchantID: 从物品链接解析腰带的附魔 ID
+-- 9.1 起匠械附魔（氮气推进器等）写入链接末段的 extraEnchantID
+-- （crafterGUID 之后），常规附魔字段（itemID 后第 2 段）仅作旧格式兼容
+-- 链接结构：item:itemID:enchantID:gemID1-4:suffixID:uniqueID:linkLevel:
+--   specializationID:modifiersMask:itemContext:numBonusIDs:bonusIDs...:
+--   numModifiers:(type:value)...:relic1-3NumBonusIDs:...:crafterGUID:extraEnchantID
+local function GetBeltEnchantID(link)
+    local payload = link:match("item:(.-)|h")
+    if not payload then return nil end
+    local f = { strsplit(":", payload) }
+    -- 旧格式：匠械在常规附魔段（itemID 之后）
+    if tonumber(f[2]) == NITRO_BOOST_ENCHANT then
+        return NITRO_BOOST_ENCHANT
+    end
+    -- 定位 extraEnchantID：跳过 bonusIDs、modifiers（type:value 成对）、
+    -- 3 组 relic bonusIDs（段数由各自的计数段决定，空段按 0 处理）
+    local idx = 14  -- f[13] 为 numBonusIDs
+    idx = idx + (tonumber(f[13]) or 0)
+    idx = idx + 1 + (tonumber(f[idx]) or 0) * 2
+    for _ = 1, 3 do
+        idx = idx + 1 + (tonumber(f[idx]) or 0)
+    end
+    -- f[idx] 为 crafterGUID（可能为空串）；该段存在时其后一段才是
+    -- extraEnchantID，不存在说明末段整体被裁剪（物品没有额外附魔）
+    if f[idx] ~= nil then
+        return tonumber(f[idx + 1])
+    end
+    return nil
+end
+
 -- CheckBelt: 工程学腰带检测（未装备腰带 / 未附魔氮气推进器）
 local function CheckBelt()
     if not HasEngineering() then return end
@@ -224,10 +254,9 @@ local function CheckBelt()
         messages[#messages + 1] = L["EA_NoBelt"]
         return
     end
-    -- 物品链接字段：item:itemID:enchantID:gemID1:...
-    local _, _, enchantID = strsplit(":", beltLink)
-    enchantID = tonumber(enchantID)
-    if enchantID ~= NITRO_BOOST_ENCHANT then
+    -- secret string 无法解析（受污染执行路径下的罕见情况），跳过而非误报
+    if issecretvalue(beltLink) then return end
+    if GetBeltEnchantID(beltLink) ~= NITRO_BOOST_ENCHANT then
         messages[#messages + 1] = L["EA_NoNitro"]
     end
 end

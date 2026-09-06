@@ -126,6 +126,12 @@ L["QuickFocus_Desc"] = "按住 Shift 并用左键点击场景中的单位、暴�
 L["AchievementIncomplete_Name"] = "成就默认筛选未完成"
 L["AchievementIncomplete_Desc"] = "每次打开成就界面时，自动将顶部筛选器重置为「未完成」。打开后仍可手动切换其他筛选。"
 
+-- 模块20：个人成就版本筛选
+L["AchievementVersionFilter_Name"] = "个人成就版本筛选"
+L["AchievementVersionFilter_Desc"] = "在成就界面「成就」（个人）标签页的筛选下拉菜单（全部/已完成/未完成）下方追加「版本」选项，悬停展开二级菜单，可按资料片/小版本（如 10.1、10.2）筛选个人成就；选「全部版本」恢复不过滤。仅在个人成就标签页生效。版本由分类、名称关键词与成就ID综合推断，个别成就可能有偏差。"
+L["AVF_Version"] = "版本"
+L["AVF_AllVersions"] = "全部版本"
+
 -- 模块18：拾取窗口向下堆叠
 L["LootStackDirection_Name"] = "拾取窗口向下堆叠"
 L["LootStackDirection_Desc"] = "团队装备 Roll 窗口与「你获得了 XXX」类拾取提示（物品/货币/金钱/装备升级），在多个同时出现时由向上堆叠改为向下堆叠：第一个保持原本位置不变，后续新出现的依次向屏幕下方增长。不修改窗口尺寸、布局、动画、倒计时等任何其他行为，禁用后立即恢复原生堆叠。"
