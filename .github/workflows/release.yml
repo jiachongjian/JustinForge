@@ -30,4 +30,5 @@ jobs:
 
       - name: Package and release
         uses: BigWigsMods/packager@v2
-        # 无需 -g 参数：仅支持正式服，packager 自动从 TOC 的 ## Interface: 120105 识别游戏版本
+        # 无需 -g 参数：仅支持正式服，packager 自动从 TOC 的 ## Interface: 120100 识别游戏版本
+        # 注意：Interface 必须为正式服当前真实版本号（勿写 PTR/前瞻版本），否则 CF 会把文件标记为未上线版本导致客户端判定不兼容
