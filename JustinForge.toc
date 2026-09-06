@@ -2,7 +2,7 @@
 ## Title: JustinForge
 ## Notes: 实用功能合集
 ## Author: JustinChia
-## Version: 12.1.1
+## Version: 12.1.2
 ## IconTexture: Interface\AddOns\JustinForge\Media\icon.tga
 ## Category: Quests & Leveling
 ## Category-zhCN: 任务
