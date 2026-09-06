@@ -1,0 +1,33 @@
+# 自动打包并发布到 CurseForge + GitHub Releases（BigWigs packager，WoW 插件社区标准方案）
+# 触发条件：推送带注释的 git tag（git tag -a v12.16 -m "v12.16" && git push origin v12.16）
+# 前置条件（一次性）：
+#   1. 仓库 Settings -> Secrets and variables -> Actions 已添加 Secret：CF_API_KEY = CurseForge API Token
+#   2. JustinForge.toc 中 ## X-Curse-Project-ID 已替换为项目页 About Project 面板里的真实数字 ID
+# 效果：云端自动打包（顶层目录 JustinForge/，剔除 .github 等开发文件，自动生成 changelog），
+#       经 CurseForge API 上传新版本，并把 zip 附到 GitHub Release
+name: Package and release
+
+on:
+  push:
+    tags:
+      - '**'
+
+permissions:
+  contents: write # 授予 GITHUB_TOKEN 创建 Release 的写权限（否则报 "resource not accessible by integration"）
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
+      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }} # GitHub 自动提供，无需手动创建
+
+    steps:
+      - name: Clone project
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # 拉取完整历史，packager 自动生成 changelog 必需
+
+      - name: Package and release
+        uses: BigWigsMods/packager@v2
+        # 无需 -g 参数：仅支持正式服，packager 自动从 TOC 的 ## Interface: 120105 识别游戏版本

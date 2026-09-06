@@ -7,12 +7,14 @@
 ## Category: Quests & Leveling
 ## Category-zhCN: 任务
 ## SavedVariables: JustinForgeDB
+## X-Curse-Project-ID: 1684599
 ## X-WoW-Version: 至暗之夜
 
 # TOC 文件说明：
 # - Interface: 120105 对应魔兽世界正式服《至暗之夜》12.1.x 系列（格式：主版本*10000 + 次版本*100 + 补丁号）
 #   前瞻写法覆盖 12.1.0~12.1.5，小补丁上线不会显示过期；12.2 上线后需再更新该数值
 # - SavedVariables: JustinForgeDB 声明持久化变量，退出游戏时由客户端自动保存到 WTF/Account/.../SavedVariables/JustinForge.lua
+# - X-Curse-Project-ID: CurseForge 项目数字 ID（来源：项目页右侧 About Project 面板；GitHub Actions 的 packager 据此自动上传文件）
 # - 加载顺序说明（Core -> Locales -> Module -> Modules -> Config）：
 #   1. Init.lua    先创建命名空间 ns 和默认配置，但此时 SavedVariables 尚未加载（ADDON_LOADED 时才加载）
 #   2. Util.lua   提供共享工具函数，供后续模块调用
