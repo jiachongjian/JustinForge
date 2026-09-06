@@ -7,11 +7,11 @@
 ## Category: Quests & Leveling
 ## Category-zhCN: 任务
 ## SavedVariables: JustinForgeDB
-## X-WoW-Version: 12.0.7 (兼容 12.1)
+## X-WoW-Version: 至暗之夜
 
 # TOC 文件说明：
-# - Interface: 120007 对应魔兽世界正式服 12.0.7 版本（格式：主版本*10000 + 次版本*100 + 补丁号）
-#   12.1.0 上线后需改为 120100；过渡期可勾选「加载过期插件」继续使用
+# - Interface: 120007 对应魔兽世界正式服《至暗之夜》版本（格式：主版本*10000 + 次版本*100 + 补丁号）
+#   新小版本上线后需相应更新该数值；过渡期可勾选「加载过期插件」继续使用
 # - SavedVariables: JustinForgeDB 声明持久化变量，退出游戏时由客户端自动保存到 WTF/Account/.../SavedVariables/JustinForge.lua
 # - 加载顺序说明（Core -> Locales -> Module -> Modules -> Config）：
 #   1. Init.lua    先创建命名空间 ns 和默认配置，但此时 SavedVariables 尚未加载（ADDON_LOADED 时才加载）

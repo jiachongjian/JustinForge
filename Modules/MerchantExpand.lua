@@ -30,7 +30,7 @@
 --     工作，时序敏感；EnhanceQoL 直接挂两个分类刷新函数，各司其职
 --
 -- 加载时机说明：
---   12.0 起商人框架并入随客户端加载的 Blizzard_UIPanels_Game，
+--   至暗之夜起商人框架并入随客户端加载的 Blizzard_UIPanels_Game，
 --   插件加载时 MerchantFrame 已存在，OnEnable 直接应用；
 --   ADDON_LOADED 等待 Blizzard_MerchantUI 的分支仅作旧版兜底。
 --

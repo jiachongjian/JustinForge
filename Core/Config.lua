@@ -11,19 +11,19 @@
 --   5. 用户修改时即时调用 Module:Enable/Disable 或模块的
 --      OnOptionChanged 回调
 --
--- 设计要点（已对照 12.0.7 客户端 UI 源码逐一核实）：
+-- 设计要点（已对照至暗之夜客户端 UI 源码逐一核实）：
 --   - Settings.RegisterVerticalLayoutCategory(name) 创建垂直布局分类
 --   - Settings.RegisterAddOnSetting(category, variable, variableKey,
 --       variableTbl, variableType, name, defaultValue) 注册绑定设置
 --   - Settings.CreateCheckbox / Settings.CreateSlider 生成勾选框/滑条
 --   - Settings.CreateSliderOptions(minValue, maxValue, rate) 的第三参数
 --     是「步长」而非步数（内部 steps = (max - min) / rate），传 1 即步长 1
---   - 分组标题/按钮在 12.0 使用全局工厂函数：
+--   - 分组标题/按钮在至暗之夜使用全局工厂函数：
 --       CreateSettingsListSectionHeaderInitializer(name, tooltip)
 --       CreateSettingsButtonInitializer(name, buttonText, onClick, tooltip, addSearchTags)
 --     注意：Settings.CreateSectionHeaderInitializer /
---           Settings.CreateButtonInitializer 在 12.0 并不存在
---   - 12.0 起设置注册统一走 SettingsInbound 安全代理，自定义初始器
+--           Settings.CreateButtonInitializer 在至暗之夜并不存在
+--   - 至暗之夜起设置注册统一走 SettingsInbound 安全代理，自定义初始器
 --     必须经 Settings.RegisterInitializer(category, initializer) 加入布局，
 --     不要再直接调用 layout:AddInitializer
 --   - 注册顺序：先创建并注册分类，再逐模块、逐控件 pcall 隔离注册。
@@ -40,7 +40,7 @@
 --       { type = "button", key = "playTest", name = "...",
 --         buttonText = "播放", tooltip = "..." },
 --   注意：曾尝试 dropdown 类型（Settings.CreateDropdown），
---   12.0.7 游戏内下拉无法展开，已移除；多选场景请用滑条代替
+--   至暗之夜游戏内下拉无法展开，已移除；多选场景请用滑条代替
 --       { type = "header", name = "..." },  -- 子分类/组内分节标题，
 --         不绑定任何值，仅作视觉分组（可穿插在 options 任意位置）
 --   }
@@ -111,7 +111,7 @@ end
 -- ------------------------------------------------------------
 -- RegisterSectionHeader: 插入一个分组标题
 -- ------------------------------------------------------------
--- 12.0 使用全局工厂 CreateSettingsListSectionHeaderInitializer；
+-- 至暗之夜使用全局工厂 CreateSettingsListSectionHeaderInitializer；
 -- 保留旧 API 名作为回退。工厂不可用时静默跳过（标题仅为视觉分组，
 -- 不影响功能）。任何异常由调用方的 pcall 捕获
 local function RegisterSectionHeader(category, title)
@@ -162,7 +162,7 @@ local function RegisterModuleOption(category, mod, dbEntry, opt)
             opt.name,
             opt.default
         )
-        -- 第三参数为步长（已核实 12.0 源码：steps = (max - min) / rate）
+        -- 第三参数为步长（已核实至暗之夜源码：steps = (max - min) / rate）
         local sliderOptions = Settings.CreateSliderOptions(opt.min, opt.max, opt.step or 1)
         -- 在滑条右侧显示当前数值（坐标类滑条为居中 0 的正负数）
         -- pcall 保护：Label/SetLabelFormatter 若被暴雪改动则静默退回纯滑条
@@ -204,7 +204,7 @@ local function RegisterModuleOption(category, mod, dbEntry, opt)
         local buttonRegistered = pcall(function()
             local initializer
             if CreateSettingsButtonInitializer then
-                -- 12.0 全局工厂（第 5 个参数 addSearchTags 必传，内部有 assert 校验；
+                -- 至暗之夜全局工厂（第 5 个参数 addSearchTags 必传，内部有 assert 校验；
                 -- 插件按钮无需进入搜索结果，传 false）
                 initializer = CreateSettingsButtonInitializer(
                     opt.name, opt.buttonText or opt.name, FireButton, opt.tooltip, false)

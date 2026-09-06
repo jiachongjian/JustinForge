@@ -12,7 +12,7 @@
 --   除此之外不修改任何其他行为（尺寸/内部布局/按钮/字体/动画/显隐/
 --   倒计时/Roll 功能/水平位置等一律保持原样）。
 --
--- 实现机制（已对照 12.0 客户端 wow-ui-source live 源码核实）：
+-- 实现机制（已对照至暗之夜客户端 wow-ui-source live 源码核实）：
 --
 --   【Roll 窗口】原生 GroupLootContainer_Update(self)：
 --       第 i 个框 SetPoint("CENTER", self, "BOTTOM", 0, reservedSize*(i-0.5))

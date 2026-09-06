@@ -1,6 +1,6 @@
 # JustinForge
 
-A lightweight quality-of-life addon collection for **World of Warcraft (Retail 12.0.7 / 12.1)**.
+A lightweight quality-of-life addon collection for **World of Warcraft Retail — Midnight (至暗之夜)**.
 Every feature is an independent module that can be toggled individually — no dependencies, no bloat.
 
 ## Features
@@ -34,7 +34,7 @@ All settings are saved automatically per profile.
 
 ## Compatibility
 
-- **Game version:** Retail 12.1
+- **Game version:** Retail — Midnight (至暗之夜)
 - **In-game language:** Simplified Chinese (zhCN)
 - **Optional support:** BigWigs, EllesmereUI (auto-detected)
 
@@ -42,7 +42,7 @@ All settings are saved automatically per profile.
 
 # JustinForge（中文说明）
 
-**魔兽世界正式服（12.1）** 轻量实用功能合集。
+**魔兽世界正式服《至暗之夜》** 轻量实用功能合集。
 每个功能都是独立模块，可单独启用或禁用——无第三方依赖，不臃肿。
 
 ## 功能列表
@@ -76,7 +76,7 @@ All settings are saved automatically per profile.
 
 ## 兼容性
 
-- **游戏版本：** 正式服 12.1
+- **游戏版本：** 正式服《至暗之夜》
 - **插件语言：** 简体中文（zhCN）
 - **可选支持：** BigWigs、EllesmereUI（自动检测）
 

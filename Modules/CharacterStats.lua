@@ -16,7 +16,7 @@
 --   主属性为当前职业色）。文字固定细描边，字号/行间距可在设置面板中调整。
 --
 -- 实现说明（数据计算/条件层以 ExwindTools 的 PStat_* 采集逻辑为蓝本从底层重构）：
---   - 主属性：专精 ID 查表确定主属性类型（避免数值比较，对 12.0 secret value
+--   - 主属性：专精 ID 查表确定主属性类型（避免数值比较，对 至暗之夜 secret value
 --     天然安全），数值取 UnitStat 第二返回值（effective，含装备/Buff 的面板总值）
 --   - 暴击：GetSpellCritChance()（与参考插件统一口径）
 --   - 全能：GetCombatRatingBonus + GetVersatilityBonus 相加（只用前者会漏掉
@@ -28,7 +28,7 @@
 --   - 坦克判定：专精表查坦克标志，表外专精回退 GetSpecializationRole API
 --   - 事件：对齐参考事件集合（含 UNIT_AURA 覆盖属性类 Buff、SPELL_TEXT_UPDATE
 --     配合描述解析），unit 事件过滤玩家 + 0.1s 防抖合并刷新
---   - 12.0 secret value 兼容：值不可比较/算术/table.concat，可 string.format
+--   - 至暗之夜 secret value 兼容：值不可比较/算术/table.concat，可 string.format
 --     并经 SetFormattedText 显示；所有比较/算术运算均经 pcall 保护
 -- ============================================================
 
@@ -70,7 +70,7 @@ local moveSpeedTicker = nil
 -- ------------------------------------------------------------
 -- 专精信息表：specID → 主属性 UnitStat 索引(1=力量 2=敏捷 4=智力) + 坦克标志
 -- ------------------------------------------------------------
--- 数据来源：ExwindTools ExwindDB.Specs（12.0 全专精，含噬灭恶魔猎手）
+-- 数据来源：ExwindTools ExwindDB.Specs（至暗之夜 全专精，含噬灭恶魔猎手）
 -- 查表法替代数值大小比较：secret value 下 UnitStat 返回值不可比较，查表天然安全
 local SPEC_INFO = {
     -- 法师（智力）
@@ -158,7 +158,7 @@ local function CacheClassColor()
 end
 
 -- ------------------------------------------------------------
--- IsSecret: 判断 12.0 secret value（旧版本无此 API，返回 false）
+-- IsSecret: 判断 至暗之夜 secret value（旧版本无此 API，返回 false）
 -- ------------------------------------------------------------
 -- 注意 API 名为全小写 issecretvalue，与其他模块保持一致
 local function IsSecret(v)
@@ -239,7 +239,7 @@ local function GetPrimaryStat()
 end
 
 -- ------------------------------------------------------------
--- 全能校准体系（移植自参考插件，应对 12.0 secret value 场景）
+-- 全能校准体系（移植自参考插件，应对 至暗之夜 secret value 场景）
 -- ------------------------------------------------------------
 -- 原理：1271074 的技能描述数值随全能缩放。平时（非 secret）记录
 --   zeroValue = 描述值 / (1 + 全能%/100)，按专精绑定存入 DB；
@@ -417,7 +417,7 @@ end
 -- 坦克属性取值函数表：属性键 → (标签, 数值)
 -- ------------------------------------------------------------
 -- 醉拳取 C_PaperDollInfo.GetStaggerPercentage（8.0 加入，返回醉拳化解百分比）；
--- 该 API 标注 AllowedWhenUntainted，12.0 下可能返回 secret 值，
+-- 该 API 标注 AllowedWhenUntainted，至暗之夜 下可能返回 secret 值，
 -- 与躲闪/招架/格挡一样经 IsPositive/FormatPercentInt 安全处理
 local TANK_STAT_FUNCS = {
     dodge = function() return L["CS_Dodge"], GetDodgeChance() end,

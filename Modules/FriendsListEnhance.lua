@@ -8,7 +8,7 @@
 --   3. 「战网名称 + 角色名」整行字体缩小一号
 --
 -- 实现原理：
---   1. 12.0 好友列表由 ScrollBox 驱动，按钮初始化走全局函数
+--   1. 至暗之夜好友列表由 ScrollBox 驱动，按钮初始化走全局函数
 --      FriendsFrame_UpdateFriendButton(button, elementData)
 --      使用 hooksecurefunc 后置 Hook，在暴雪设置完文本后重写 name 行
 --   2. 战网好友在线且正在 WoW 中时，从 C_BattleNet.GetFriendAccountInfo

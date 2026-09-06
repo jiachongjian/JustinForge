@@ -23,7 +23,7 @@
 --   3. 条结束（running 置 nil）或被延长（remaining 回升超过窗口）
 --      时自动回收对应提醒框架；条对象被 LibCandyBar 回收复用时
 --      会先收到新的 BarCreated，此时清掉旧提醒避免残留旧内容。
---   4. 12.0 安全值防护：remaining / label / icon 均可能是 secret
+--   4. 至暗之夜安全值防护：remaining / label / icon 均可能是 secret
 --      value，比较/gsub/SetTexture 前一律 issecretvalue 防护。
 --   5. 图标圆角：MaskTexture（Media/RoundedRect.tga）。
 --   6. 未检测到 BigWigs 时 OnEnable 聊天提示并静默，不影响其他模块。

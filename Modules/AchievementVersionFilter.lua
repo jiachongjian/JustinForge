@@ -6,7 +6,7 @@
 --   下方追加「版本」一级选项，悬停展开二级菜单，可按资料片/小版本
 --   （如 10.1、10.2）筛选个人成就列表；选「全部版本」恢复不过滤。
 --
--- 实现机制（已对照 12.0 客户端 Blizzard_AchievementUI 源码核实）：
+-- 实现机制（已对照至暗之夜客户端 Blizzard_AchievementUI 源码核实）：
 --   1. 菜单注入：筛选下拉框带 rootDescription:SetTag("MENU_ACHIEVEMENT_FILTER")
 --      标签，Menu.ModifyMenu 在菜单末尾追加条目，样式与原生一致。
 --   2. 列表过滤：成就列表统一由全局函数

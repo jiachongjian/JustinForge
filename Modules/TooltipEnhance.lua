@@ -150,7 +150,7 @@ local DIFFICULTIES = {
 }
 
 -- ============================================================
--- 当前赛季团本数据（「至暗之夜」第二赛季，12.1）
+-- 当前赛季团本数据（「至暗之夜」第二赛季）
 -- 击杀统计 ID 来源：wowhead 角色统计（已逐个核对）；
 -- lfgID / 图标来源：wago.tools LFGDungeons（普通难度条目）
 -- ============================================================
@@ -180,7 +180,7 @@ local CURRENT_SEASON_RAIDS = {
 -- 辅助函数
 -- ============================================================
 
--- 安全判断是否大于 0（兼容 12.0 secret value）
+-- 安全判断是否大于 0（兼容至暗之夜 secret value）
 local function SafePositive(v)
     if v == nil then return false end
     local ok, result = pcall(function() return v > 0 end)
@@ -214,7 +214,7 @@ if GameTooltip and GameTooltip.FadeOut then
 end
 
 -- 获取职业颜色 hex 和 RGB
--- 12.0 中 UnitClass 返回的 classFile 可能是 secret string，
+-- 至暗之夜中 UnitClass 返回的 classFile 可能是 secret string，
 -- secret 值不能用作表键（索引 RAID_CLASS_COLORS 会报错），回退白色
 local function GetClassColor(classFile)
     if issecretvalue and issecretvalue(classFile) then

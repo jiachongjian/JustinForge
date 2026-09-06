@@ -4,7 +4,7 @@
 -- 功能描述：
 --   每次打开成就界面时，自动把顶部的筛选器重置为「未完成」。
 --
--- 实现机制（已对照 12.0 客户端 Blizzard_AchievementUI 源码核实）：
+-- 实现机制（已对照至暗之夜客户端 Blizzard_AchievementUI 源码核实）：
 --   暴雪的筛选状态采用「函数指针」模式，全局变量
 --   ACHIEVEMENTUI_SELECTEDFILTER 保存三个筛选函数之一的引用：
 --     AchievementFrame_GetCategoryNumAchievements_All        全部（默认值）
