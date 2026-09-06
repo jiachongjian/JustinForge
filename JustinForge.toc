@@ -43,4 +43,5 @@ Modules\AchievementVersionFilter.lua
 Modules\BigWigsEnhance.lua
 Modules\LootStackDirection.lua
 Modules\EquipmentAlert.lua
+Modules\FriendsListEnhance.lua
 Core\Config.lua

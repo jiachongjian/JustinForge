@@ -63,6 +63,8 @@ local defaults = {
         lootStackDirection = { enabled = true },
         -- 功能19：装备错误提醒（posX/posY 为相对屏幕中心的偏移，默认屏幕中上方）
         equipmentAlert = { enabled = true, posX = 0, posY = 260, fontSize = 18 },
+        -- 功能21：好友列表增强（战网好友角色名职业染色+追加等级+名字行字号缩小）
+        friendsListEnhance = { enabled = true },
     },
 }
 

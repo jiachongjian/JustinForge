@@ -193,3 +193,7 @@ L["EA_NeedRanged"] = "武器错误"
 L["EA_NeedDaggers"] = "武器错误"
 L["EA_WrongStatMain"] = "主手属性错误"
 L["EA_WrongStatOff"] = "副手属性错误"
+
+-- 模块21：好友列表增强
+L["FriendsListEnhance_Name"] = "好友列表增强"
+L["FriendsListEnhance_Desc"] = "增强 O 键好友面板中的战网好友条目：好友登录角色后，角色名按职业染色，并在角色名后追加等级数字（保持默认颜色）；「战网名+角色名」整行字体缩小一号。仅作用于战网好友条目，角色好友条目保持原生显示。"
