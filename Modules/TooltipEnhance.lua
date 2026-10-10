@@ -16,6 +16,9 @@
 --     7. 目标的目标（>>姓名/你<<，职业染色）
 --     8. 世界悬停提示立即消失：鼠标离开世界单位/对象时跳过暴雪默认的
 --        「停留 1 秒 + 淡出 1 秒」，提示框立刻隐藏
+--     9. EllesmereUI 玩家光环条：悬停 buff/debuff 图标时，在提示末尾
+--        追加灰色法术ID（识别 GameTooltip 归属者父链上的命名框体前缀
+--        EllesmereUIPlayerAuraBars_，引擎匿名 AuraButton 无需全局名）
 --   （字号保持原生：原 15 号字功能已移除，避免污染池化复用的 FontString）
 --
 -- 实现原理：
@@ -85,6 +88,7 @@ local C_MythicPlus_GetOwnedKeystoneChallengeMapID = C_MythicPlus.GetOwnedKeyston
 local C_MythicPlus_GetOwnedKeystoneLevel = C_MythicPlus.GetOwnedKeystoneLevel
 local C_PlayerInfo_GetInspectItemLevel = C_PlayerInfo.GetInspectItemLevel
 local C_PlayerInfo_GetPlayerMythicPlusRatingSummary = C_PlayerInfo.GetPlayerMythicPlusRatingSummary
+local C_UnitAuras_GetAuraDataByAuraInstanceID = C_UnitAuras.GetAuraDataByAuraInstanceID
 local RAID_CLASS_COLORS = RAID_CLASS_COLORS
 
 -- 12.x 秘密值检查
@@ -814,6 +818,56 @@ end
 
 -- 回调无法卸载，仅注册一次
 TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, OnTooltipUnit)
+
+-- ============================================================
+-- EllesmereUI 玩家光环条：提示末尾追加法术ID
+-- EllesmereUI 光环条复用暴雪 12.x AuraContainer 引擎，图标为引擎匿名
+-- AuraButton，悬停时由引擎调 GameTooltip:SetUnitAuraByAuraInstanceID
+-- 填充提示（TooltipDataType.UnitAura）。图标无全局名，但其父链上存在
+-- 命名框体：EllesmereUIPlayerAuraBars_Buffs/_Debuffs/_CustomBuff<ID>/
+-- _CustomDebuff<ID>（PlayerAuraBars.lua 中 CreateFrame 命名），据此识别
+-- 提示来源。UnitAura 的 data 仅含 unit/auraInstanceID/filter，法术ID需
+-- 由 C_UnitAuras.GetAuraDataByAuraInstanceID 反解（战斗中可能为 secret
+-- value，直接跳过）。引擎每次刷新都重建提示，追加行不会累积。
+-- ============================================================
+local ELLESMERE_AURA_BAR_PREFIX = "EllesmereUIPlayerAuraBars_"
+
+-- 判断提示框当前归属者是否位于 EllesmereUI 玩家光环条层级内
+-- （AuraButton -> 匿名 AuraContainer -> 命名父框体，最多向上 6 层）
+local function IsEllesmereAuraBarOwner(tooltip)
+    local ok, owner = pcall(tooltip.GetOwner, tooltip)
+    if not ok or not owner then return false end
+    for _ = 1, 6 do
+        if not owner then return false end
+        local okName, name = pcall(owner.GetName, owner)
+        if okName and name and not (issecretvalue and issecretvalue(name))
+            and name:sub(1, #ELLESMERE_AURA_BAR_PREFIX) == ELLESMERE_AURA_BAR_PREFIX then
+            return true
+        end
+        owner = owner:GetParent()
+    end
+    return false
+end
+
+local function OnTooltipUnitAura(tooltip, data)
+    if not module.enabled then return end
+    if tooltip ~= GameTooltip then return end
+    if not data or not data.unit or not data.auraInstanceID then return end
+    if not IsEllesmereAuraBarOwner(tooltip) then return end
+
+    local ok, spellId = pcall(function()
+        local aura = C_UnitAuras_GetAuraDataByAuraInstanceID(data.unit, data.auraInstanceID)
+        return aura and aura.spellId
+    end)
+    if not ok or not spellId then return end
+    if issecretvalue and issecretvalue(spellId) then return end
+
+    tooltip:AddLine(format("|cff9d9d9d%s: %s|r", L["TE_AuraSpellID"], tostring(spellId)))
+    tooltip:Show()
+end
+
+-- 回调无法卸载，仅注册一次
+TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.UnitAura, OnTooltipUnitAura)
 
 -- ============================================================
 -- OnEnable: 模块启用
