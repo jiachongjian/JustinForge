@@ -268,12 +268,13 @@ local function ResolveVersion(id, name, description, categoryID)
 end
 
 -- ============================================================
--- BeginScan: 启动后台分帧扫描（每帧预算 4ms，约 2 秒完成）
+-- BeginScan: 启动后台分帧扫描（每 0.05 秒一批，单批预算 5ms）
 -- 数千个成就的遍历若单帧同步执行会造成数秒卡顿，
--- 因此用 C_Timer 逐帧推进；扫描期间 versionCounts 渐进填充，
--- 菜单打开时显示已扫到的版本，扫完后即为完整结果。
--- 登录后由 PLAYER_ENTERING_WORLD 延迟 10 秒启动，避开加载高峰期
-local SCAN_BUDGET_MS = 4
+-- 因此用 C_Timer 分批推进，批与批之间留出空帧，避免持续掉帧；
+-- 扫描期间 versionCounts 渐进填充，扫完后即为完整结果。
+-- 扫描不在登录时自动执行，仅在首次打开「版本」筛选菜单时启动
+local SCAN_BUDGET_MS = 5
+local SCAN_INTERVAL = 0.05
 
 local function BeginScan()
     if versionCounts or scanning then return end
@@ -287,7 +288,7 @@ local function BeginScan()
     scanning = true
     scanState = { cats = categories, cat = 1, ach = 0, numAch = 0, categoryID = nil }
 
-    scanTicker = C_Timer.NewTicker(0, function()
+    scanTicker = C_Timer.NewTicker(SCAN_INTERVAL, function()
         local deadline = debugprofilestop() + SCAN_BUDGET_MS
         local st = scanState
         repeat
@@ -422,7 +423,9 @@ local function InjectMenu(_, rootDescription)
         function() return selectedVersion == nil end,
         function() SetVersion(nil) end)
     for _, info in ipairs(VERSIONS) do
-        if (versionCounts[info.key] or 0) > 0 then
+        -- 扫描进行中结果尚不完整，先显示全部版本（筛选不依赖统计，立即可用）；
+        -- 扫描完成后只显示实际有成就的版本
+        if scanning or (versionCounts[info.key] or 0) > 0 then
             local key = info.key
             submenu:CreateRadio(
                 info.label,
@@ -454,21 +457,16 @@ function module:OnEnable()
         eventFrame:SetScript("OnEvent", function(_, event, arg1)
             if event == "ADDON_LOADED" and arg1 == "Blizzard_AchievementUI" then
                 InstallHook()
-            elseif event == "PLAYER_ENTERING_WORLD" then
-                -- 登录/进位面后延迟 10 秒启动后台分帧扫描，
-                -- 避开加载高峰期，避免与游戏自身的登录负载叠加
-                C_Timer.After(10, BeginScan)
             end
         end)
     end
     eventFrame:RegisterEvent("ADDON_LOADED")
-    eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 
     if C_AddOns.IsAddOnLoaded("Blizzard_AchievementUI") then
         InstallHook()
     end
-    -- 模块在世界加载后被手动启用时，同样延迟启动扫描
-    C_Timer.After(10, BeginScan)
+    -- 注意：不在登录/启用时自动扫描成就，避免登录卡顿；
+    -- 扫描推迟到首次打开「版本」筛选菜单时由 InjectMenu 触发
 end
 
 -- ============================================================
