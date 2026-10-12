@@ -16,10 +16,10 @@
 --     7. 目标的目标（>>姓名/你<<，职业染色）
 --     8. 世界悬停提示立即消失：鼠标离开世界单位/对象时跳过暴雪默认的
 --        「停留 1 秒 + 淡出 1 秒」，提示框立刻隐藏
---     9. EllesmereUI 玩家光环条：悬停 buff/debuff 图标时，在提示末尾
---        追加灰色法术ID（UnitAura 回调的 data.id；来源按 GameTooltip
---        归属者/鼠标焦点父链上的命名框体前缀 EllesmereUIPlayerAuraBars_
---        识别，引擎匿名 AuraButton 无需全局名）
+--     9. 光环提示法术ID：为光环提示显示法术ID（含 EllesmereUI 玩家
+--        光环条等 12.x AuraContainer 引擎容器）。引擎容器提示不经 Lua
+--        数据管线，Lua 无法向其追加行，只能通过引擎侧 CVar
+--        tooltipShowAuraSpellIDs 渲染（全局开关，PEW 重断言）
 --   （字号保持原生：原 15 号字功能已移除，避免污染池化复用的 FontString）
 --
 -- 实现原理：
@@ -89,7 +89,6 @@ local C_MythicPlus_GetOwnedKeystoneChallengeMapID = C_MythicPlus.GetOwnedKeyston
 local C_MythicPlus_GetOwnedKeystoneLevel = C_MythicPlus.GetOwnedKeystoneLevel
 local C_PlayerInfo_GetInspectItemLevel = C_PlayerInfo.GetInspectItemLevel
 local C_PlayerInfo_GetPlayerMythicPlusRatingSummary = C_PlayerInfo.GetPlayerMythicPlusRatingSummary
-local GetMouseFoci = GetMouseFoci
 local RAID_CLASS_COLORS = RAID_CLASS_COLORS
 
 -- 12.x 秘密值检查
@@ -821,67 +820,60 @@ end
 TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, OnTooltipUnit)
 
 -- ============================================================
--- EllesmereUI 玩家光环条：提示末尾追加法术ID
--- 机制（参照 EllesmereUI 自身 SpellIDTooltipHook 的实战实现）：
---   1. 光环条复用暴雪 12.x AuraContainer 引擎，图标为引擎匿名按钮，
---      悬停时引擎经 GameTooltip:SetUnitAuraByAuraInstanceID 填充提示，
---      触发 TooltipDataType.UnitAura 回调；其后处理数据的 data.id 即
---      光环法术ID（该数据中不含 unit/auraInstanceID 字段，不可反解；
---      战斗中 id 为 secret value，无法转字符串，直接跳过）
---   2. 来源识别：GameTooltip 归属者或鼠标焦点框体的父链上存在命名
---      框体 EllesmereUIPlayerAuraBars_Buffs/_Debuffs/_CustomBuff<ID>/
---      _CustomDebuff<ID>（AuraButton -> 匿名 AuraContainer -> 命名父框体）
---   3. 引擎每次刷新都重建提示，追加行不会累积
+-- EllesmereUI 玩家光环条：光环提示显示法术ID
+-- 12.x AuraContainer 引擎容器的提示不经 Lua 数据管线（TooltipDataProcessor
+-- 回调收不到，EllesmereUI 作者称之为 "forbidden container tooltips"），
+-- Lua 侧无法向这类提示追加行。暴雪为此提供引擎侧 CVar
+-- tooltipShowAuraSpellIDs（68824+），由引擎直接在光环提示上渲染法术ID，
+-- secret 上下文中同样可用（EllesmereUI 自身 SpellID 功能、Platynator 的
+-- 同名选项均依赖此 CVar）。
+-- 注意点（参照 EllesmereUI.SyncAuraSpellIDCVar 的实战经验）：
+--   1. CVar 仅会话有效，且引擎在登录后会重置一次 -> 必须在
+--      PLAYER_ENTERING_WORLD 上反复断言，而非只在启用时写一次
+--   2. EllesmereUI 每次 PEW 也会重设该 CVar（其 SpellID 功能关闭时写
+--      "0"）；JustinForge 加载顺序在 EllesmereUI 之后，同一事件内后注册
+--      的处理后执行，本模块的写入最终生效
+--   3. 该 CVar 为全局开关：启用后所有光环提示（含目标框体/姓名板等）
+--      都会显示法术ID，无法只限定 EllesmereUI 光环条
+--   4. 禁用时恢复启用前的原值，避免污染用户其他配置
 -- ============================================================
-local ELLESMERE_AURA_BAR_PREFIX = "EllesmereUIPlayerAuraBars_"
+local AURA_SPELL_ID_CVAR = "tooltipShowAuraSpellIDs"
 
--- 沿父链向上（最多 6 层）查找 EllesmereUI 玩家光环条命名框体
-local function HasAuraBarAncestor(frame)
-    local node = frame
-    for _ = 1, 6 do
-        if not node then return false end
-        local okName, name = pcall(node.GetName, node)
-        if okName and name and not (issecretvalue and issecretvalue(name))
-            and name:sub(1, #ELLESMERE_AURA_BAR_PREFIX) == ELLESMERE_AURA_BAR_PREFIX then
-            return true
-        end
-        local okParent, parent = pcall(node.GetParent, node)
-        if not okParent then return false end
-        node = parent
+-- 启用前用户自己的 CVar 原值（nil 表示未记录/客户端无此 CVar）
+local auraSpellIDCVarPrevValue = nil
+
+local function ApplyAuraSpellIDCVar()
+    pcall(C_CVar.SetCVar, AURA_SPELL_ID_CVAR, "1")
+end
+
+-- PEW 重断言：引擎登录后会重置会话 CVar；与 EllesmereUI 的重设竞争时
+-- 本处理注册更晚，同事件内后执行生效
+local auraSpellIDCVarFrame = CreateFrame("Frame")
+auraSpellIDCVarFrame:SetScript("OnEvent", function(_, event)
+    if event == "PLAYER_ENTERING_WORLD" and module.enabled then
+        ApplyAuraSpellIDCVar()
     end
-    return false
+end)
+
+local function EnableAuraSpellID()
+    auraSpellIDCVarPrevValue = C_CVar.GetCVar(AURA_SPELL_ID_CVAR)
+    ApplyAuraSpellIDCVar()
+    auraSpellIDCVarFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 end
 
--- 判定提示来源：tooltip 归属者或鼠标焦点位于光环条层级内（双通道，
--- 不依赖引擎具体的 SetOwner 行为）
-local function IsEllesmereAuraBarTooltip(tooltip)
-    local ok, owner = pcall(tooltip.GetOwner, tooltip)
-    if ok and owner and HasAuraBarAncestor(owner) then return true end
-    if GetMouseFoci then
-        local okFoci, foci = pcall(GetMouseFoci)
-        if okFoci and foci then
-            for _, f in ipairs(foci) do
-                if HasAuraBarAncestor(f) then return true end
-            end
-        end
+local function DisableAuraSpellID()
+    auraSpellIDCVarFrame:UnregisterEvent("PLAYER_ENTERING_WORLD")
+    -- 恢复启用前原值；若 EllesmereUI 自身 SpellID 功能正在托管该 CVar
+    -- （开启且无修饰键），其期望值为 "1"，不覆盖
+    local ok, euiManages = pcall(function()
+        return _G.EllesmereUI and _G.EllesmereUI.SpellIDOn and _G.EllesmereUI.SpellIDOn()
+            and (_G.EllesmereUIDB and (_G.EllesmereUIDB.spellIDModifier or "none") == "none")
+    end)
+    if not (ok and euiManages) and auraSpellIDCVarPrevValue then
+        pcall(C_CVar.SetCVar, AURA_SPELL_ID_CVAR, auraSpellIDCVarPrevValue)
     end
-    return false
+    auraSpellIDCVarPrevValue = nil
 end
-
-local function OnTooltipUnitAura(tooltip, data)
-    if not module.enabled then return end
-    if tooltip ~= GameTooltip then return end
-    -- 与 EllesmereUI 自身实现相同的判定顺序：先 not 后 issecretvalue
-    if not data or not data.id then return end
-    if issecretvalue and issecretvalue(data.id) then return end
-    if not IsEllesmereAuraBarTooltip(tooltip) then return end
-
-    tooltip:AddLine(format("|cff9d9d9d%s: %s|r", L["TE_AuraSpellID"], tostring(data.id)))
-    tooltip:Show()
-end
-
--- 回调无法卸载，仅注册一次
-TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.UnitAura, OnTooltipUnitAura)
 
 -- ============================================================
 -- OnEnable: 模块启用
@@ -889,6 +881,7 @@ TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.UnitAura, OnTooltip
 function module:OnEnable()
     BuildSeasonMaps()
     progressFrame:RegisterEvent("INSPECT_ACHIEVEMENT_READY")
+    EnableAuraSpellID()
     Util:Debug("TooltipEnhance: 已启用")
 end
 
@@ -899,5 +892,6 @@ function module:OnDisable()
     progressFrame:UnregisterAllEvents()
     ClearAchievementComparisonUnit()
     pendingGUIDs = {}
+    DisableAuraSpellID()
     Util:Debug("TooltipEnhance: 已禁用")
 end
