@@ -19,7 +19,8 @@
 --     9. 光环提示法术ID：为光环提示显示法术ID（含 EllesmereUI 玩家
 --        光环条等 12.x AuraContainer 引擎容器）。引擎容器提示不经 Lua
 --        数据管线，Lua 无法向其追加行，只能通过引擎侧 CVar
---        tooltipShowAuraSpellIDs 渲染（全局开关，PEW 重断言）
+--        tooltipShowAuraSpellIDs 渲染（全局开关，PEW 重断言 + 压过
+--        EllesmereUI 自己的同步写入，详见文件末尾光环段说明）
 --   （字号保持原生：原 15 号字功能已移除，避免污染池化复用的 FontString）
 --
 -- 实现原理：
@@ -830,9 +831,11 @@ TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, OnTooltipUnit
 -- 注意点（参照 EllesmereUI.SyncAuraSpellIDCVar 的实战经验）：
 --   1. CVar 仅会话有效，且引擎在登录后会重置一次 -> 必须在
 --      PLAYER_ENTERING_WORLD 上反复断言，而非只在启用时写一次
---   2. EllesmereUI 每次 PEW 也会重设该 CVar（其 SpellID 功能关闭时写
---      "0"）；JustinForge 加载顺序在 EllesmereUI 之后，同一事件内后注册
---      的处理后执行，本模块的写入最终生效
+--   2. EllesmereUI 每次 PEW 也会重设该 CVar：其 SpellID 功能关闭、或
+--      配置了「按住修饰键才显示」（spellIDModifier ~= "none"）时写 "0"。
+--      它在 PLAYER_LOGIN 内才创建自己的 PEW 帧，注册顺序晚于本模块，
+--      同一事件内会后执行 -> 必须在它之后落笔（延后一帧 + hook 其
+--      SyncAuraSpellIDCVar），否则本模块写入的 "1" 会被覆盖回 "0"
 --   3. 该 CVar 为全局开关：启用后所有光环提示（含目标框体/姓名板等）
 --      都会显示法术ID，无法只限定 EllesmereUI 光环条
 --   4. 禁用时恢复启用前的原值，避免污染用户其他配置
@@ -843,25 +846,59 @@ local AURA_SPELL_ID_CVAR = "tooltipShowAuraSpellIDs"
 local auraSpellIDCVarPrevValue = nil
 
 local function ApplyAuraSpellIDCVar()
-    pcall(C_CVar.SetCVar, AURA_SPELL_ID_CVAR, "1")
+    local ok, current = pcall(C_CVar.GetCVar, AURA_SPELL_ID_CVAR)
+    if ok and current == "1" then return end
+    if not pcall(C_CVar.SetCVar, AURA_SPELL_ID_CVAR, "1") then
+        pcall(SetCVar, AURA_SPELL_ID_CVAR, "1")
+    end
 end
 
--- PEW 重断言：引擎登录后会重置会话 CVar；与 EllesmereUI 的重设竞争时
--- 本处理注册更晚，同事件内后执行生效
+-- EllesmereUI 的同步函数（定义在它的 PLAYER_LOGIN 处理里，晚于本模块）：
+-- PEW 与选项变更时都会调用它，配置为「按住修饰键」时把 CVar 写回 "0"。
+-- 在它之后立刻重新置 "1"，本模块的开关才是最终状态。
+local ellesmereSyncHooked = false
+local function HookEllesmereAuraSync()
+    if ellesmereSyncHooked then return end
+    local eui = _G.EllesmereUI
+    if type(eui) ~= "table" or type(eui.SyncAuraSpellIDCVar) ~= "function" then return end
+    hooksecurefunc(eui, "SyncAuraSpellIDCVar", function()
+        if module.enabled then ApplyAuraSpellIDCVar() end
+    end)
+    ellesmereSyncHooked = true
+end
+
+-- 延后一帧落笔：PEW 的处理按注册先后执行，EllesmereUI 的 PEW 帧注册更晚，
+-- 会最后写入 "0"；C_Timer.After(0) 在本帧所有事件处理之后执行，确保本模块
+-- 的写入是最后一次
+local function ReassertAuraSpellIDCVarSoon()
+    C_Timer.After(0, function()
+        if module.enabled then ApplyAuraSpellIDCVar() end
+    end)
+end
+
+-- 重断言：引擎登录后会重置该会话 CVar；EUI 也在 PEW 上重设，故登录后
+-- 立即写一次、延后再写一次，并挂上 EUI 同步函数的 hook
 local auraSpellIDCVarFrame = CreateFrame("Frame")
 auraSpellIDCVarFrame:SetScript("OnEvent", function(_, event)
-    if event == "PLAYER_ENTERING_WORLD" and module.enabled then
+    if not module.enabled then return end
+    if event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" then
         ApplyAuraSpellIDCVar()
+        HookEllesmereAuraSync()
+        ReassertAuraSpellIDCVarSoon()
     end
 end)
 
 local function EnableAuraSpellID()
     auraSpellIDCVarPrevValue = C_CVar.GetCVar(AURA_SPELL_ID_CVAR)
     ApplyAuraSpellIDCVar()
+    HookEllesmereAuraSync()
+    ReassertAuraSpellIDCVarSoon()
+    auraSpellIDCVarFrame:RegisterEvent("PLAYER_LOGIN")
     auraSpellIDCVarFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 end
 
 local function DisableAuraSpellID()
+    auraSpellIDCVarFrame:UnregisterEvent("PLAYER_LOGIN")
     auraSpellIDCVarFrame:UnregisterEvent("PLAYER_ENTERING_WORLD")
     -- 恢复启用前原值；若 EllesmereUI 自身 SpellID 功能正在托管该 CVar
     -- （开启且无修饰键），其期望值为 "1"，不覆盖
