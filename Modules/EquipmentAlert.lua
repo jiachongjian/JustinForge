@@ -30,8 +30,10 @@
 --     classID/subclassID（武器=2，匕首=15；护甲=4，盾牌=6），
 --     不受客户端语言影响
 --   - 武器主属性：GetItemStats 取
---     ITEM_MOD_STRENGTH_SHORT / AGILITY / INTELLECT 中最高项，
---     武器无主属性（旧世界武器等）时跳过该项检测避免误报
+--     ITEM_MOD_STRENGTH_SHORT / AGILITY / INTELLECT，
+--     武器具备当前专精主属性即视为正确——部分武器同时提供两种
+--     主属性（如恶魔猎手战刃兼具敏捷与智力，适配浩劫/复仇与
+--     噬灭专精）；武器无主属性（旧世界武器等）时跳过该项检测避免误报
 --   - 刷新触发：装备变更 / 专精切换 / 技能线变化（学专业）/
 --     背包变化（补附魔），0.2 秒合并节流
 --   - 提醒颜色按类别区分（用户要求）：武器类提醒 = 史诗紫，
@@ -98,12 +100,12 @@ local MELEE_2H_SPECS = { [255] = true }
 local RANGED_SPECS = { [253] = true, [254] = true }
 -- 双持专精：主手为单手武器时副手必须有武器
 -- 狂暴战(72) 冰DK(251) 三系贼(259/260/261) 增强萨(263)
--- 酒仙(268) 踏风(269) 浩劫(577) 复仇(581)
+-- 酒仙(268) 踏风(269) 浩劫(577) 复仇(581) 噬灭(1480)
 local DUAL_WIELD_SPECS = {
     [72] = true, [251] = true,
     [259] = true, [260] = true, [261] = true,
     [263] = true, [268] = true, [269] = true,
-    [577] = true, [581] = true,
+    [577] = true, [581] = true, [1480] = true,
 }
 
 -- 双手武器装备位置（这些位置装备的武器不要求副手）
@@ -281,27 +283,29 @@ local function GetItemClassInfo(link)
     return classID, subclassID, equipLoc
 end
 
--- GetWeaponPrimaryStat: 取武器的主属性下标（1力/2敏/3智）
--- 返回 nil 表示武器无主属性（旧世界武器等），跳过该项检测
-local function GetWeaponPrimaryStat(link)
+-- GetWeaponPrimaryStats: 取武器实际具备的主属性集合（{ [下标] = true }，
+-- 下标 1力/2敏/3智）。返回 nil 表示武器无主属性（旧世界武器等），
+-- 跳过该项检测。部分武器同时具备两种主属性（如恶魔猎手战刃兼具
+-- 敏捷与智力，适配浩劫/复仇与噬灭专精），此时任一匹配即视为正确。
+local function GetWeaponPrimaryStats(link)
     if not GetItemStatsFunc then return nil end
     local stats = GetItemStatsFunc(link)
     if type(stats) ~= "table" then return nil end
-    local bestIndex, bestValue = nil, 0
+    local result
     for i = 1, 3 do
         local v = stats[STAT_KEYS[i]]
-        if type(v) == "number" and not issecretvalue(v) and v > bestValue then
-            bestValue = v
-            bestIndex = i
+        if type(v) == "number" and not issecretvalue(v) and v > 0 then
+            result = result or {}
+            result[i] = true
         end
     end
-    return bestIndex
+    return result
 end
 
 -- CheckWeaponStat: 单件武器主属性与专精主属性比对
 local function CheckWeaponStat(link, expectedIndex, message)
-    local weaponStat = GetWeaponPrimaryStat(link)
-    if weaponStat and weaponStat ~= expectedIndex then
+    local weaponStats = GetWeaponPrimaryStats(link)
+    if weaponStats and not weaponStats[expectedIndex] then
         AddMessage(message, WEAPON_COLOR)
     end
 end
