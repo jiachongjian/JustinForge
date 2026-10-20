@@ -4,7 +4,8 @@
 -- 功能描述：
 --   在屏幕上常态显示一个小巧的人物属性面板（无边框无背景），
 --   固定按以下顺序展示：
---     1. 主属性（力量/敏捷/智力，按当前专精自动识别）
+--     1. 主属性（力量/敏捷/智力，按当前专精自动识别，可在设置中隐藏，
+--        隐藏后副属性自动上移占据原位置）
 --     2. 副属性（暴击 / 急速 / 精通 / 全能，整数百分比）
 --     3. 第三属性（吸血 / 闪避 / 加速，仅当非 0 时显示，整数百分比）
 --     4. 坦克属性（躲闪 / 招架 / 格挡 / 醉拳，可在设置中关闭；仅坦克专精显示，
@@ -55,6 +56,7 @@ local module = ns.Module:Register({
         { type = "slider", key = "posY", name = L["CharacterStats_PosY"], min = -halfHeight, max = halfHeight, step = 1, default = 0 },
         { type = "slider", key = "fontSize", name = L["CharacterStats_FontSize"], min = 8, max = 24, step = 1, default = 12 },
         { type = "slider", key = "lineSpacing", name = L["CharacterStats_LineSpacing"], min = 0, max = 12, step = 1, default = 2 },
+        { type = "checkbox", key = "hidePrimary", name = L["CharacterStats_HidePrimary"], default = false },
         { type = "checkbox", key = "showTertiary", name = L["CharacterStats_ShowTertiary"], default = true },
         { type = "checkbox", key = "showTank", name = L["CharacterStats_ShowTank"], default = true },
     },
@@ -438,9 +440,14 @@ local function Refresh()
 
     local lines = {}
 
-    -- 1. 主属性（按专精自动识别，职业色）
-    local primaryName, primaryValue = GetPrimaryStat()
-    table.insert(lines, { primaryName, FormatInt(primaryValue), "primary" })
+    local db = ns.db and ns.db.profile and ns.db.profile.characterStats
+
+    -- 1. 主属性（按专精自动识别，职业色；可在设置中隐藏，
+    --    隐藏后副属性自动上移占据原主属性位置）
+    if not db or db.hidePrimary ~= true then
+        local primaryName, primaryValue = GetPrimaryStat()
+        table.insert(lines, { primaryName, FormatInt(primaryValue), "primary" })
+    end
 
     -- 2. 副属性（固定四项，始终显示，整数百分比）
     table.insert(lines, { L["CS_Crit"],    FormatPercentInt(GetSpellCritChance()), "crit" })
@@ -451,7 +458,6 @@ local function Refresh()
     -- 3. 第三属性（可在设置中关闭；仅当非 0 时显示，整数百分比）
     -- 注意此处不能调用下方才声明的 GetOption（Lua 局部变量前置可见性），
     -- 直接读取 DB：键缺失或为 false 以外的值时视为开启（默认 true）
-    local db = ns.db and ns.db.profile and ns.db.profile.characterStats
     if not db or db.showTertiary ~= false then
         local leech = GetLifesteal()
         if IsPositive(leech) then
@@ -578,7 +584,7 @@ function module:OnOptionChanged(key, value)
     elseif key == "fontSize" or key == "lineSpacing" then
         ApplyFontAndSpacing()
         Refresh()
-    elseif key == "showTertiary" or key == "showTank" then
+    elseif key == "hidePrimary" or key == "showTertiary" or key == "showTank" then
         Refresh()
     end
 end
