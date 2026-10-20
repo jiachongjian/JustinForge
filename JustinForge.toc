@@ -2,7 +2,7 @@
 ## Title: JustinForge
 ## Notes: 实用功能合集
 ## Author: JustinChia
-## Version: 12.1.10
+## Version: 12.1.11
 ## IconTexture: Interface\AddOns\JustinForge\Media\icon.tga
 ## Category: Quests & Leveling
 ## Category-zhCN: 任务
@@ -43,6 +43,7 @@ Modules\QuickFocus.lua
 Modules\AchievementUiFix.lua
 Modules\AchievementIncomplete.lua
 Modules\AchievementVersionFilter.lua
+Modules\AchievementHiddenFilter.lua
 Modules\BigWigsEnhance.lua
 Modules\LootStackDirection.lua
 Modules\EquipmentAlert.lua

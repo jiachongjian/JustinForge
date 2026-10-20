@@ -133,6 +133,11 @@ L["AchievementVersionFilter_Desc"] = "在成就界面「成就」（个人）标
 L["AVF_Version"] = "版本"
 L["AVF_AllVersions"] = "全部版本"
 
+-- 模块22：筛选个人隐藏成就
+L["AchievementHiddenFilter_Name"] = "筛选个人隐藏成就"
+L["AchievementHiddenFilter_Desc"] = "在成就界面「成就」（个人）标签页的筛选下拉菜单中追加「隐藏成就」勾选项（默认不勾选），仅控制未完成的隐藏成就的显示：不勾选时从列表中隐藏它们，勾选时显示（以略淡透明度和淡紫色名称与正常成就区分）；已完成的成就不受影响。仅在个人成就标签页生效。"
+L["AHF_Hidden"] = "隐藏成就"
+
 -- 模块18：拾取窗口向下堆叠
 L["LootStackDirection_Name"] = "拾取窗口向下堆叠"
 L["LootStackDirection_Desc"] = "团队装备 Roll 窗口与「你获得了 XXX」类拾取提示（物品/货币/金钱/装备升级），在多个同时出现时由向上堆叠改为向下堆叠：第一个保持原本位置不变，后续新出现的依次向屏幕下方增长。不修改窗口尺寸、布局、动画、倒计时等任何其他行为，禁用后立即恢复原生堆叠。"

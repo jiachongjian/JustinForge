@@ -51,6 +51,7 @@ local defaults = {
         achievementUiFix = { enabled = true }, -- 功能15：成就对比界面报错修复
         achievementIncomplete = { enabled = true }, -- 功能16：成就界面默认未完成
         achievementVersionFilter = { enabled = true }, -- 功能20：公会成就版本筛选
+        achievementHiddenFilter = { enabled = true }, -- 功能22：筛选个人隐藏成就
         -- 功能17：BigWigs 中央技能提醒（计时条倒数 5 秒时屏幕中央显示图标+法术名+整数倒计时）
         -- posX/posY 为相对屏幕中心的偏移（0 = 屏幕正中）；偏移类 0 = 紧贴名称
         bigWigsEnhance  = { enabled = true,
