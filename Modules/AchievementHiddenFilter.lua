@@ -17,10 +17,18 @@
 --   - 隐藏成就的判定：GetAchievementInfo(id) 第 9 个返回值 flags 的 0x800 位（HIDE_INCOMPLETE）。
 -- =========================================================
 
-local ADDON_NAME, JF = ...
-local L = JF.L
+local addonName, ns = ...
+local L = ns.L
 
-local module = JF:RegisterModule("AchievementHiddenFilter", "achievementHiddenFilter")
+-- ============================================================
+-- 模块注册
+-- ============================================================
+local module = ns.Module:Register({
+    key            = "achievementHiddenFilter",
+    name           = L["AchievementHiddenFilter_Name"],
+    description    = L["AchievementHiddenFilter_Desc"],
+    defaultEnabled = true,
+})
 
 -- 常量定义
 local HIDDEN_FLAG = 0x00000800 -- GetAchievementInfo flags：HIDE_INCOMPLETE（隐藏成就，完成前不可见）
@@ -149,27 +157,35 @@ local function InstallHook()
     end
 end
 
--- =========================================================
+-- ============================================================
 -- 模块生命周期
--- =========================================================
-function module:OnInitialize()
-    if not self:IsEnabled() then return end
-    if C_AddOns and C_AddOns.IsAddOnLoaded("Blizzard_AchievementUI") then
+-- ============================================================
+-- Blizzard_AchievementUI 是懒加载插件，首次打开成就界面时才加载，
+-- 因此 OnEnable 中既要立即尝试安装 hook（可能已加载），
+-- 也要监听 ADDON_LOADED 以便后续补装（与 AchievementIncomplete 同模式）。
+local eventFrame -- 监听 Blizzard_AchievementUI 懒加载事件的 Frame
+
+function module:OnEnable()
+    if not eventFrame then
+        eventFrame = CreateFrame("Frame")
+        eventFrame:SetScript("OnEvent", function(_, _, loadedAddon)
+            if loadedAddon == "Blizzard_AchievementUI" then
+                InstallHook()
+            end
+        end)
+    end
+    eventFrame:RegisterEvent("ADDON_LOADED")
+
+    if C_AddOns.IsAddOnLoaded("Blizzard_AchievementUI") then
         InstallHook()
     end
 end
 
-function module:OnEnable()
-    RefreshList()
-end
-
+-- 停止监听；hook/菜单回调内部均检查 module.enabled，禁用后不再生效
 function module:OnDisable()
+    if eventFrame then
+        eventFrame:UnregisterAllEvents()
+    end
     showHidden = false
     RefreshList()
 end
-
-module:RegisterEvent("ADDON_LOADED", function(self, addonName)
-    if addonName == "Blizzard_AchievementUI" then
-        InstallHook()
-    end
-end)
