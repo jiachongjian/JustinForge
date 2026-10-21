@@ -11,9 +11,11 @@
 --   - 原生 AchievementFrame_GetCategoryNumAchievements_All/Complete/Incomplete 调用
 --     GetCategoryNumAchievements(categoryID) 时「不传」includeAll，默认枚举不含未完成隐藏成就；
 --   - AchievementFrameAchievements_UpdateDataProvider 依据 ACHIEVEMENTUI_SELECTEDFILTER(category)
---     的返回值循环 GetAchievementInfo(category, index) 填充列表，索引枚举由最近一次
---     GetCategoryNumAchievements 决定——因此包装筛选函数传 includeAll=true 即可让原生循环
---     自动列出隐藏成就（WeakAuras 同款枚举模式）；
+--     的返回值循环 GetAchievementInfo(category, index) 填充列表，索引枚举口径与最近一次
+--     GetCategoryNumAchievements 的 includeAll 一致（WeakAuras 同款枚举模式）——
+--     因此「替换」三个筛选全局函数使其在勾选时传 includeAll=true，即可让原生循环自动列出隐藏成就；
+--   - 必须替换全局函数本体而非仅 AchievementFrameFilters 表内引用：暴雪默认赋值、
+--     本插件 AchievementIncomplete 模块（OnShow 重置筛选）均按名字从 _G 引用这些函数；
 --   - 隐藏成就的判定：GetAchievementInfo(id) 第 9 个返回值 flags 的 0x800 位（HIDE_INCOMPLETE）。
 -- =========================================================
 
@@ -32,16 +34,13 @@ local module = ns.Module:Register({
 
 -- 常量定义
 local HIDDEN_FLAG = 0x00000800 -- GetAchievementInfo flags：HIDE_INCOMPLETE（隐藏成就，完成前不可见）
-local ACHIEVEMENT_FILTER_ALL = 1
-local ACHIEVEMENT_FILTER_COMPLETE = 2
-local ACHIEVEMENT_FILTER_INCOMPLETE = 3
 local HIDDEN_ALPHA = 0.85             -- 隐藏成就按钮整体透明度
 local HIDDEN_LABEL_R, HIDDEN_LABEL_G, HIDDEN_LABEL_B = 0.75, 0.6, 1 -- 隐藏成就名称颜色（淡紫）
 
 -- 模块状态
 local showHidden = false -- 「隐藏成就」勾选项是否选中（默认不勾选=隐藏），会话内有效
 local hooked = false
-local originalFilterFuncs = nil -- 包装前保存的原生筛选函数（按 AchievementFrameFilters 索引）
+local originalFilterFuncs = nil -- 替换前保存的三个原生筛选全局函数（all/complete/incomplete）
 
 -- 判断当前是否处于个人成就标签页
 local function IsPersonalView()
@@ -71,47 +70,85 @@ local function RefreshList()
 end
 
 -- =========================================================
--- 列表注入：包装三个原生筛选函数，勾选时改用 includeAll 枚举
+-- 列表注入：替换三个原生筛选「全局函数」本体，勾选时改用 includeAll 枚举
 -- （返回值映射完全复刻暴雪原生实现，仅枚举范围变为含隐藏成就）
 -- =========================================================
 local function WrapFilterFunctions()
     if originalFilterFuncs then return end
-    if not AchievementFrameFilters or not ACHIEVEMENTUI_SELECTEDFILTER then return end
-    originalFilterFuncs = {}
-    for i, filter in ipairs(AchievementFrameFilters) do
-        local orig = filter.func
-        originalFilterFuncs[i] = orig
-        filter.func = function(categoryID)
-            if module.enabled and showHidden and IsPersonalView() then
-                local numAchievements, numCompleted, numIncomplete = GetCategoryNumAchievements(categoryID, true)
-                if i == ACHIEVEMENT_FILTER_ALL then
-                    return numAchievements, numCompleted, 0
-                elseif i == ACHIEVEMENT_FILTER_COMPLETE then
-                    return numCompleted, numCompleted, 0
-                else -- ACHIEVEMENT_FILTER_INCOMPLETE
-                    return numIncomplete, 0, numAchievements - numIncomplete
-                end
+    local allFunc = _G.AchievementFrame_GetCategoryNumAchievements_All
+    local completeFunc = _G.AchievementFrame_GetCategoryNumAchievements_Complete
+    local incompleteFunc = _G.AchievementFrame_GetCategoryNumAchievements_Incomplete
+    if type(allFunc) ~= "function" or type(completeFunc) ~= "function" or type(incompleteFunc) ~= "function" then
+        return
+    end
+    originalFilterFuncs = { all = allFunc, complete = completeFunc, incomplete = incompleteFunc }
+
+    local function ShouldIncludeAll()
+        return module.enabled and showHidden and IsPersonalView()
+    end
+
+    _G.AchievementFrame_GetCategoryNumAchievements_All = function(categoryID)
+        if ShouldIncludeAll() then
+            local numAchievements, numCompleted = GetCategoryNumAchievements(categoryID, true)
+            return numAchievements, numCompleted, 0
+        end
+        return allFunc(categoryID)
+    end
+    _G.AchievementFrame_GetCategoryNumAchievements_Complete = function(categoryID)
+        if ShouldIncludeAll() then
+            local _, numCompleted = GetCategoryNumAchievements(categoryID, true)
+            return numCompleted, numCompleted, 0
+        end
+        return completeFunc(categoryID)
+    end
+    _G.AchievementFrame_GetCategoryNumAchievements_Incomplete = function(categoryID)
+        if ShouldIncludeAll() then
+            local numAchievements, _, numIncomplete = GetCategoryNumAchievements(categoryID, true)
+            return numIncomplete, 0, numAchievements - numIncomplete
+        end
+        return incompleteFunc(categoryID)
+    end
+
+    -- 暴雪文件加载时已将原函数引用写入 AchievementFrameFilters 表和
+    -- ACHIEVEMENTUI_SELECTEDFILTER，统一重指到新函数，保持 == 身份比较一致
+    local remap = {
+        [allFunc] = _G.AchievementFrame_GetCategoryNumAchievements_All,
+        [completeFunc] = _G.AchievementFrame_GetCategoryNumAchievements_Complete,
+        [incompleteFunc] = _G.AchievementFrame_GetCategoryNumAchievements_Incomplete,
+    }
+    if AchievementFrameFilters then
+        for _, filter in ipairs(AchievementFrameFilters) do
+            if remap[filter.func] then
+                filter.func = remap[filter.func]
             end
-            return orig(categoryID)
         end
     end
-    -- ACHIEVEMENTUI_SELECTEDFILTER 持有原函数引用，重新指向包装后的对应函数
-    for i = 1, #AchievementFrameFilters do
-        if ACHIEVEMENTUI_SELECTEDFILTER == originalFilterFuncs[i] then
-            ACHIEVEMENTUI_SELECTEDFILTER = AchievementFrameFilters[i].func
-            break
-        end
+    if remap[_G.ACHIEVEMENTUI_SELECTEDFILTER] then
+        _G.ACHIEVEMENTUI_SELECTEDFILTER = remap[_G.ACHIEVEMENTUI_SELECTEDFILTER]
     end
 end
 
 -- =========================================================
 -- 样式区分：未完成的隐藏成就以区别样式显示
 -- =========================================================
+local reInitializing = false -- 枚举口径自检重试标志（防递归）
 local function StyleButton(self)
     if not module.enabled then return end
     if not IsPersonalView() then return end
     local elementData = self.GetElementData and self:GetElementData()
     local id = elementData and elementData.id or self.id
+    -- 枚举口径自检：Init 通过 GetAchievementInfo(category, index) 取数；
+    -- 若 index 枚举口径在 Init 前被其他代码重置为默认（不含隐藏成就），
+    -- self.id 会与 elementData.id 不一致，此时以 includeAll 口径重置后重试一次
+    if showHidden and not reInitializing
+        and elementData and elementData.category and elementData.index
+        and elementData.id and self.id ~= elementData.id then
+        reInitializing = true
+        GetCategoryNumAchievements(elementData.category, true)
+        self:Init(elementData)
+        reInitializing = false
+        return
+    end
     if IsHiddenIncomplete(id) then
         self:SetAlpha(HIDDEN_ALPHA)
         if self.Label then
