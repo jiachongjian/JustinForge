@@ -19,6 +19,9 @@
 --   - 展开高度：AchievementTemplateMixin.CalculateSelectedHeight 固定用 (category, index) 取数，
 --     故为注入元素复刻一份按 ID 取数的同逻辑实现；
 --   - 隐藏成就的判定：GetAchievementInfo(id) 第 9 个返回值 flags 的 0x800 位（HIDE_INCOMPLETE）。
+--   - 绝版过滤：光辉事迹分类树（81 / 15093 及其子分类）下的隐藏成就属于绝版/纪念内容，一律不显示。
+--   - 注入后不得在布局流程中强制 FullUpdate：中途出错会残留 ScrollBox acquireLock 状态，
+--     进而导致后续点击在 ScrollBoxListView.FindFrame 处崩溃。
 -- =========================================================
 
 local addonName, ns = ...
@@ -37,10 +40,15 @@ local module = ns.Module:Register({
 -- 常量定义
 local HIDDEN_FLAG = 0x00000800 -- GetAchievementInfo flags：HIDE_INCOMPLETE（隐藏成就，完成前不可见）
 local HIDDEN_ALPHA = 0.85             -- 隐藏成就按钮整体透明度
-local HIDDEN_LABEL_R, HIDDEN_LABEL_G, HIDDEN_LABEL_B = 0.75, 0.6, 1 -- 隐藏成就名称颜色（淡紫）
+-- 隐藏成就名称颜色：贴近原生「未完成」灰色，仅带极轻微冷紫以作区分（不能过亮，否则会被误认为已完成）
+local HIDDEN_LABEL_R, HIDDEN_LABEL_G, HIDDEN_LABEL_B = 0.60, 0.60, 0.78
 local SCAN_CHUNK = 3000               -- 每帧扫描的 ID 数量
 local SCAN_PROBE_STEP = 1000          -- 上界探测步长
 local SCAN_PROBE_MAX = 200000         -- 上界探测上限
+
+-- 光辉事迹（Feats of Strength）分类树：绝版/纪念性内容集中地
+local FEAT_OF_STRENGTH_CATEGORY = 81
+local GUILD_FEAT_OF_STRENGTH_CATEGORY = 15093
 
 -- 模块状态
 local showHidden = false -- 「隐藏成就」勾选项是否选中（默认不勾选=隐藏），会话内有效
@@ -51,10 +59,44 @@ local function IsPersonalView()
     return AchievementFrame and AchievementFrame.selectedTab == 1
 end
 
--- 判断指定成就是否为「未完成的隐藏成就」
+-- =========================================================
+-- 绝版 / 不可再获取判定
+-- 说明：客户端 Lua 层没有暴露官方「已绝版」标记位（GetAchievementInfo 的 flags 位表
+-- 与 C_AchievementInfo 文档均无此项，该标记只存在于 C 层成就 tooltip 中），
+-- 因此采用分类树判定：光辉事迹（Feats of Strength：81 / 15093 及其子分类）
+-- 是绝版、纪念、旧赛季/旧团本首杀等不可再获取内容的集中分类，其隐藏成就一律不显示。
+-- =========================================================
+local legacyCache = {}
+local function IsLegacyAchievement(id)
+    if not id then return false end
+    local cached = legacyCache[id]
+    if cached ~= nil then return cached end
+
+    local result = false
+    local categoryID = select(1, GetAchievementCategory(id))
+    local guard = 0
+    while type(categoryID) == "number" and categoryID >= 0 and guard < 8 do
+        if categoryID == FEAT_OF_STRENGTH_CATEGORY or categoryID == GUILD_FEAT_OF_STRENGTH_CATEGORY then
+            result = true
+            break
+        end
+        local _, parent = GetCategoryInfo(categoryID)
+        if type(parent) ~= "number" or parent < 0 or parent == categoryID then
+            break
+        end
+        categoryID = parent
+        guard = guard + 1
+    end
+
+    legacyCache[id] = result
+    return result
+end
+
+-- 判断指定成就是否为「未完成的隐藏成就」（且不是绝版内容）
 local hiddenFlagCache = {}
 local function IsHiddenIncomplete(id)
     if not id then return false end
+    if IsLegacyAchievement(id) then return false end
     local hidden = hiddenFlagCache[id]
     if hidden == nil then
         local flags = select(9, GetAchievementInfo(id))
@@ -96,10 +138,9 @@ local function ScanChunk()
     local last = math.min(scanCurrentID + SCAN_CHUNK - 1, scanLimit)
     for id = scanCurrentID, last do
         -- GetAchievementInfo(id) 返回 id, name, points, completed, month, day, year, description, flags, ...
-        local realID, name, _, completed, _, _, _, _, flags = GetAchievementInfo(id)
+        local realID = GetAchievementInfo(id)
         if realID then
-            if flags and bit.band(flags, HIDDEN_FLAG) == HIDDEN_FLAG and not completed then
-                hiddenFlagCache[id] = true
+            if IsHiddenIncomplete(id) then
                 local categoryID = GetAchievementCategory(id)
                 if type(categoryID) == "number" and categoryID >= 0 then
                     local list = hiddenByCategory[categoryID]
@@ -196,17 +237,14 @@ local function InjectHiddenAchievements()
             existing[elementData.id] = true
         end
     end
-    local inserted = false
     for _, id in ipairs(ids) do
         if not existing[id] and IsHiddenIncomplete(id) then
             dataProvider:Insert({ category = category, id = id, hiddenInjected = true })
-            inserted = true
         end
     end
-    -- 插入发生在 SetDataProvider 之后，强制立即布局一次确保新元素渲染
-    if inserted and ScrollBoxConstants and ScrollBoxConstants.UpdateImmediately then
-        scrollBox:FullUpdate(ScrollBoxConstants.UpdateImmediately)
-    end
+    -- 不要在此处强制 FullUpdate：SetDataProvider 已排定本次布局，
+    -- 在布局流程中途同步触发全量刷新会重入 ScrollBox 的 acquire 流程，
+    -- 一旦中途出错就会残留 acquireLock/deferredCallbacks 状态，导致后续点击崩溃
 end
 
 -- =========================================================
@@ -307,11 +345,20 @@ local function CalculateHiddenHeight(elementData)
 
     totalHeight = totalHeight + objectivesHeight
 
-    AchievementFrame.PlaceholderHiddenDescription:SetText(description)
-    local numLines = math.ceil(AchievementFrame.PlaceholderHiddenDescription:GetHeight() / ACHIEVEMENTUI_FONTHEIGHT)
-    if (totalHeight ~= ACHIEVEMENTBUTTON_COLLAPSEDHEIGHT) or (numLines > ACHIEVEMENTUI_MAX_LINES_COLLAPSED) then
-        local descriptionHeight = AchievementFrame.PlaceholderHiddenDescription:GetHeight()
-        totalHeight = totalHeight + descriptionHeight - ACHIEVEMENTBUTTON_DESCRIPTIONHEIGHT
+    local desc = AchievementFrame.PlaceholderHiddenDescription
+    desc:SetText(description or "")
+    local descriptionHeight = desc:GetHeight()
+    -- 行高：优先用 FontString 自身行高，退化到字体高度，最后兜底 12
+    -- （注意：客户端 12.1.x 并不一定有全局 ACHIEVEMENTUI_FONTHEIGHT，直接引用会报错）
+    local lineHeight = desc.GetLineHeight and desc:GetLineHeight()
+    if not lineHeight or lineHeight <= 0 then
+        local _, fontHeight = desc:GetFont()
+        lineHeight = ACHIEVEMENTUI_FONTHEIGHT or fontHeight or 12
+    end
+    if not lineHeight or lineHeight <= 0 then lineHeight = 12 end
+    local numLines = math.ceil(descriptionHeight / lineHeight)
+    if (totalHeight ~= ACHIEVEMENTBUTTON_COLLAPSEDHEIGHT) or (numLines > (ACHIEVEMENTUI_MAX_LINES_COLLAPSED or 2)) then
+        totalHeight = totalHeight + descriptionHeight - (ACHIEVEMENTBUTTON_DESCRIPTIONHEIGHT or 22)
         if rewardText ~= "" then
             totalHeight = totalHeight + 4
         end
@@ -328,7 +375,13 @@ local function WrapCalculateSelectedHeight()
     if type(orig) ~= "function" then return end
     AchievementTemplateMixin.CalculateSelectedHeight = function(elementData)
         if module.enabled and elementData and elementData.hiddenInjected and elementData.id then
-            return CalculateHiddenHeight(elementData)
+            -- 高度计算在 ScrollBox 布局流程中被调用，任何异常都会破坏视图状态
+            -- （残留 acquireLock 后会导致后续点击在 FindFrame 中崩溃），故必须兜住
+            local ok, height = pcall(CalculateHiddenHeight, elementData)
+            if ok and type(height) == "number" then
+                return height
+            end
+            return ACHIEVEMENTBUTTON_COLLAPSEDHEIGHT or 84
         end
         return orig(elementData)
     end
