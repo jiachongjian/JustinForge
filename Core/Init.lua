@@ -66,6 +66,8 @@ local defaults = {
         equipmentAlert = { enabled = true, posX = 0, posY = 260, fontSize = 18 },
         -- 功能21：好友列表增强（战网好友角色名职业染色+追加等级+名字行字号缩小）
         friendsListEnhance = { enabled = true },
+        -- 功能23：隐藏宠物框体右键菜单中的「释放」项（解散/放弃保持原样）
+        petMenuHideRelease = { enabled = true },
     },
 }
 

@@ -48,4 +48,5 @@ Modules\BigWigsEnhance.lua
 Modules\LootStackDirection.lua
 Modules\EquipmentAlert.lua
 Modules\FriendsListEnhance.lua
+Modules\PetMenuHideRelease.lua
 Core\Config.lua

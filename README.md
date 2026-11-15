@@ -23,6 +23,7 @@ Every feature is an independent module that can be toggled individually — no d
 - **Loot Stack Downward** — Loot roll windows and loot toasts (items / currency / gold / upgrades) stack downward instead of upward.
 - **Equipment Alert** — On-screen warnings for gear mistakes: missing Nitro Boosts, missing weapon / off-hand / shield, wrong weapon type or main stat for your spec, etc.
 - **Friends List Enhance** — Class-colored character names with level display for Battle.net friends in the Friends panel.
+- **Hide Pet Release Menu** — Removes the "Release" entry from the pet frame's right-click menu to prevent accidental pet release ("Dismiss" and "Abandon Pet" stay available).
 
 ## Installation
 
@@ -65,6 +66,7 @@ All settings are saved automatically per profile.
 - **拾取窗口向下堆叠** — Roll 窗口与拾取提示（物品/货币/金钱/装备升级）由向上堆叠改为向下堆叠。
 - **装备错误提醒** — 检测明显装备错误并屏幕提醒：未附魔氮气推进器、主手/副手/盾牌缺失、武器类型或主属性与专精不符等。
 - **好友列表增强** — 战网好友条目角色名按职业染色并追加等级显示。
+- **隐藏宠物右键「释放」项** — 宠物框体右键菜单隐藏「释放」，避免误点放归宠物；「解散」「放弃宠物」保持可用。
 
 ## 安装
 

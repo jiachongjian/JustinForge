@@ -74,6 +74,8 @@ local CATEGORY_LAYOUT = {
         "quickFocus", "hideCrafter", "teleportUnequip", "chatHideLearn",
         "druidFlightForm", "achievementIncomplete", "lootStackDirection",
         "friendsListEnhance",
+        -- 隐藏宠物右键菜单「释放」项
+        "petMenuHideRelease",
         -- 末尾两项：成就对比报错修复、个人成就版本筛选
         "achievementUiFix", "achievementVersionFilter",
         -- 最后一项：筛选个人隐藏成就
