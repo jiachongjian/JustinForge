@@ -206,7 +206,5 @@ L["FriendsListEnhance_Desc"] = "增强 O 键好友面板中的战网好友条目
 
 -- 模块23：隐藏宠物右键「释放」项
 L["PetMenuHideRelease_Name"] = "隐藏宠物右键「释放」项"
-L["PetMenuHideRelease_Desc"] = "在宠物框体右键菜单中隐藏「释放」选项，避免误点导致宠物被放归。同菜单的「解散」「放弃宠物」保持原样，可正常使用。"
-L["PetMenuHideRelease_Tooltip"] = "宠物框体（头像）右键菜单中不再显示「释放」项。\n\n「解散」「放弃宠物」两项不隐藏，仍可正常使用。\n\n若某次需要「释放」，暂时关闭本项即可。"
--- 菜单项文本匹配关键词（用于客户端菜单项 ID 与预期不一致时兜底识别「释放」）
-L["PetMenuHideRelease_Keyword"] = "释放"
+L["PetMenuHideRelease_Desc"] = "在宠物框体右键菜单中隐藏「释放」项，避免误点导致宠物被永久释放。同菜单的「解散」「重命名」「设置焦点」等保持原样。"
+L["PetMenuHideRelease_Tooltip"] = "宠物框体（头像）右键菜单中不再显示「释放」项。\n\n「释放」会永久释放宠物；「解散」仅收回宠物，不受本项影响。\n\n若确实需要释放宠物，暂时关闭本项后再操作。"

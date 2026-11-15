@@ -3,24 +3,30 @@
 -- ============================================================
 -- 功能描述：
 --   在宠物框体（PetFrame）右键菜单中隐藏「释放」项，
---   避免误点导致宠物被放归、需要重新召唤或找回。
---   同菜单中的「解散」「放弃宠物」保持原样，不受影响。
+--   避免误点导致宠物被永久释放。
+--   同菜单中的「解散」「重命名」「设置焦点」等保持原样。
 --
--- 实现原理：
---   暴雪右键菜单（UnitPopup）在弹出瞬间逐项读取全局表
---   UnitPopupMenus[which] 决定显示哪些菜单项，宠物框体使用
---   which = "PET"。本模块启用时把目标项从 UnitPopupMenus["PET"]
---   中移除并记录其原索引，禁用时按原索引插回，
---   菜单结构与顺序和原生完全一致。
+-- 实现原理（12.x / 至暗之夜）：
+--   12.0 起单位右键菜单改由新 Menu 系统构建：
+--     UnitPopupManager:OpenMenu("PET", contextData)
+--       -> MenuUtil.CreateContextMenu + SetTag("MENU_UNIT_PET")
+--       -> UnitPopupMenuPet:GetEntries() 返回一组 Button Mixin
+--       -> 逐项调用 entry:CanShow(contextData)，为 false 才跳过不显示
+--   其中「释放」= UnitPopupPetAbandonButtonMixin（GetText 返回 PET_ABANDON），
+--   「解散」= UnitPopupPetDismissButtonMixin（PET_DISMISS），两者互相独立。
 --
---   判定目标项：优先按菜单项 ID（PET_RELEASE），
---   再按显示文本包含「释放」兜底匹配，覆盖不同版本 / 译名的差异；
---   「解散」「放弃宠物」通过 ID 与关键词双重排除，确保不会被误隐藏。
+--   因此只需要包装 UnitPopupPetAbandonButtonMixin.CanShow，
+--   在模块启用期间返回 false，即可让「释放」项不参与菜单构建；
+--   禁用时还原原函数。只影响该单个菜单项，不改菜单表、不 Hook 菜单构建入口，
+--   不会波及「解散」等其它项的点击执行。
+--
+--   兼容：若客户端仍是旧版 UnitPopup 系统（UnitPopupMenus["PET"] 为数组），
+--   则改为从该数组中移除 PET_ABANDON，并在禁用时按原索引插回。
 --
 -- 注意：
---   - 只做纯 Lua 表操作，不 Hook 任何受保护函数，也不操作下拉菜单按钮；
---   - 若客户端改动菜单结构（UnitPopupMenus 不存在），模块静默不生效；
---   - 菜单表在登录期间长期有效，界面重载后按保存的开关状态重新应用。
+--   - Blizzard_UnitPopupShared 可能晚于本插件加载，故监听 ADDON_LOADED
+--     / PLAYER_ENTERING_WORLD 重试包装，避免加载顺序导致失效；
+--   - 若客户端改动 Mixin 名称，包装静默跳过（不影响其它功能）。
 -- ============================================================
 
 local addonName, ns = ...
@@ -28,8 +34,8 @@ local addonName, ns = ...
 local L = ns.L
 local Util = ns.Util
 
-local tinsert, tremove = table.insert, table.remove
 local strfind = strfind
+local tinsert, tremove = table.insert, table.remove
 
 -- ============================================================
 -- 模块注册
@@ -42,31 +48,55 @@ local module = ns.Module:Register({
     defaultEnabled = true,
 })
 
--- ------------------------------------------------------------
--- 需要隐藏的菜单项 ID
--- ------------------------------------------------------------
--- PET_RELEASE：「释放」（部分版本译为「释放宠物」）
--- 注意：PET_DISMISS（解散）与 PET_ABANDON（放弃宠物）不在此列
-local HIDDEN_ITEM_IDS = {
-    PET_RELEASE = true,
-}
+-- 12.x：宠物「释放」项对应的 Mixin 全局名
+local ABANDON_MIXIN_NAME = "UnitPopupPetAbandonButtonMixin"
+-- 旧版 UnitPopup 系统中「释放」对应的菜单项 ID
+local LEGACY_ITEM_ID = "PET_ABANDON"
 
--- 绝不隐藏的菜单项 ID（即使文本关键词误命中也要排除）
-local EXCLUDED_ITEM_IDS = {
-    PET_DISMISS = true,  -- 解散宠物
-    PET_ABANDON = true,  -- 放弃宠物
-}
-
--- 已被移除的菜单项记录：{ index = 原索引, id = 菜单项 ID }
-local removedItems = {}
--- 是否已将隐藏规则应用到当前菜单表
-local applied = false
+-- 原始 CanShow（包装前），用于禁用时还原
+local originalCanShow
+-- 已被包装的 mixin 表（用于还原时确认对象一致）
+local hookedMixin
+-- 旧版系统移除记录：原索引数组
+local legacyRemovedIndexes = {}
+-- 事件监听框架（惰性创建，OnEnable/OnDisable 间复用）
+local eventFrame
 
 -- ------------------------------------------------------------
--- GetPetMenu: 取宠物框体右键菜单的定义表
+-- HideCanShow: 包装后的 CanShow
 -- ------------------------------------------------------------
--- 返回：UnitPopupMenus["PET"]（数组），不可用时返回 nil
-local function GetPetMenu()
+-- 模块启用期间恒返回 false，使「释放」项不显示；
+-- 模块禁用后回落到原始实现（正常情况下已还原，不依赖此分支）
+local function HideCanShow(self, contextData)
+    if module.enabled then
+        return false
+    end
+    if originalCanShow then
+        return originalCanShow(self, contextData)
+    end
+    return true
+end
+
+-- ------------------------------------------------------------
+-- ApplyMenuHook: 包装新 Menu 系统的「释放」Mixin.CanShow
+-- ------------------------------------------------------------
+-- 返回：true 表示已完成包装（mixin 不存在时返回 false）
+local function ApplyMenuHook()
+    local mixin = _G[ABANDON_MIXIN_NAME]
+    if type(mixin) ~= "table" then return false end
+    if mixin.CanShow == HideCanShow then return true end
+
+    originalCanShow = mixin.CanShow
+    mixin.CanShow = HideCanShow
+    hookedMixin = mixin
+    Util:Debug("PetMenuHideRelease: 已接管 " .. ABANDON_MIXIN_NAME .. ".CanShow")
+    return true
+end
+
+-- ------------------------------------------------------------
+-- GetLegacyPetMenu: 旧版 UnitPopup 宠物菜单数组
+-- ------------------------------------------------------------
+local function GetLegacyPetMenu()
     local menus = _G.UnitPopupMenus
     if type(menus) ~= "table" then return nil end
     local menu = menus["PET"]
@@ -75,111 +105,112 @@ local function GetPetMenu()
 end
 
 -- ------------------------------------------------------------
--- GetItemText: 取菜单项的显示文本
+-- ApplyLegacy: 旧版系统下从菜单数组中移除 PET_ABANDON
 -- ------------------------------------------------------------
--- 菜单项文本定义在 UnitPopupButtons[id].text
--- 返回：字符串，取不到时返回 nil
-local function GetItemText(id)
-    local buttons = _G.UnitPopupButtons
-    local button = buttons and buttons[id]
-    local text = button and button.text
-    if type(text) == "string" then
-        return text
-    end
-    return nil
-end
+local function ApplyLegacy()
+    local menu = GetLegacyPetMenu()
+    if not menu then return false end
 
--- ------------------------------------------------------------
--- IsReleaseItem: 判断某个菜单项是否为需要隐藏的「释放」项
--- ------------------------------------------------------------
--- 参数 id：菜单项 ID（如 "PET_RELEASE"）
--- 返回：true 表示需要隐藏
-local function IsReleaseItem(id)
-    if type(id) ~= "string" then return false end
-
-    -- 明确排除「解散」「放弃宠物」，优先级最高
-    if EXCLUDED_ITEM_IDS[id] then return false end
-    if HIDDEN_ITEM_IDS[id] then return true end
-
-    -- 文本兜底：
-    --   1) 显示文本等于客户端 PET_RELEASE 字符串
-    --   2) 显示文本包含「释放」关键词（排除项已在上面跳过）
-    local text = GetItemText(id)
-    if not text then return false end
-
-    local releaseText = _G.PET_RELEASE
-    if releaseText ~= nil and text == releaseText then
-        return true
-    end
-
-    local keyword = L["PetMenuHideRelease_Keyword"]
-    if keyword and strfind(text, keyword, 1, true) then
-        return true
-    end
-
-    return false
-end
-
--- ------------------------------------------------------------
--- Apply: 从宠物菜单中移除目标项，并记录原索引
--- ------------------------------------------------------------
-local function Apply()
-    if applied then return end
-
-    local menu = GetPetMenu()
-    if not menu then
-        Util:Debug("PetMenuHideRelease: 未找到 UnitPopupMenus.PET，跳过")
-        return
-    end
-
-    removedItems = {}
+    legacyRemovedIndexes = {}
     local index = 1
     while index <= #menu do
-        local id = menu[index]
-        if IsReleaseItem(id) then
-            tinsert(removedItems, { index = index, id = id })
+        if menu[index] == LEGACY_ITEM_ID then
+            tinsert(legacyRemovedIndexes, index)
             tremove(menu, index)
             -- 移除后该位置已是下一项，索引不递增
         else
             index = index + 1
         end
     end
-
-    applied = true
-    Util:Debug("PetMenuHideRelease: 已隐藏宠物右键菜单项 " .. #removedItems)
+    return #legacyRemovedIndexes > 0
 end
 
 -- ------------------------------------------------------------
--- Restore: 按原索引把移除的项插回，完全还原原生菜单
+-- RestoreLegacy: 旧版系统下按原索引插回
 -- ------------------------------------------------------------
-local function Restore()
-    if not applied then return end
+local function RestoreLegacy()
+    if #legacyRemovedIndexes == 0 then return end
 
-    local menu = GetPetMenu()
+    local menu = GetLegacyPetMenu()
     if menu then
-        -- 按记录顺序（原索引升序）插回：每次插入都已还原前段顺序，
-        -- 因此原索引即为正确的插入位置；菜单被外部改动时做越界保护
-        for _, item in ipairs(removedItems) do
-            local pos = item.index
+        for _, pos0 in ipairs(legacyRemovedIndexes) do
+            local pos = pos0
             if pos > #menu + 1 then
                 pos = #menu + 1
             end
-            tinsert(menu, pos, item.id)
+            tinsert(menu, pos, LEGACY_ITEM_ID)
         end
     end
+    legacyRemovedIndexes = {}
+end
 
-    removedItems = {}
-    applied = false
-    Util:Debug("PetMenuHideRelease: 已还原宠物右键菜单")
+-- ------------------------------------------------------------
+-- Apply / Restore: 总入口
+-- ------------------------------------------------------------
+local function Apply()
+    local hooked = ApplyMenuHook()
+    ApplyLegacy()
+    return hooked
+end
+
+local function Restore()
+    -- 还原新 Menu 系统的 CanShow
+    if hookedMixin and hookedMixin.CanShow == HideCanShow then
+        hookedMixin.CanShow = originalCanShow
+    end
+    hookedMixin = nil
+    originalCanShow = nil
+
+    -- 还原旧版系统菜单数组
+    RestoreLegacy()
+end
+
+-- ------------------------------------------------------------
+-- EnsureApplied: 幂等应用（应对 Blizzard 插件延迟加载/重定义）
+-- ------------------------------------------------------------
+local function EnsureApplied()
+    if not module.enabled then return end
+    Apply()
+end
+
+-- ------------------------------------------------------------
+-- 事件：等待 Blizzard_UnitPopupShared 加载完成后补装包装
+-- ------------------------------------------------------------
+local function CreateEventFrame()
+    eventFrame = CreateFrame("Frame")
+    eventFrame:SetScript("OnEvent", function(_, event, arg1)
+        if not module.enabled then return end
+
+        if event == "ADDON_LOADED" then
+            -- 只关心 UnitPopup 相关插件（Blizzard_UnitPopupShared 等）
+            if type(arg1) == "string" and strfind(arg1, "UnitPopup") then
+                EnsureApplied()
+            end
+        elseif event == "PLAYER_ENTERING_WORLD" then
+            -- 再次兜底：登录完成后确认包装仍然生效
+            EnsureApplied()
+        end
+    end)
 end
 
 -- ------------------------------------------------------------
 -- OnEnable / OnDisable
 -- ------------------------------------------------------------
 function module:OnEnable()
-    Apply()
+    if not eventFrame then
+        CreateEventFrame()
+    end
+    eventFrame:RegisterEvent("ADDON_LOADED")
+    eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+
+    if not Apply() then
+        Util:Debug("PetMenuHideRelease: 菜单 Mixin 尚未加载，等待 ADDON_LOADED 后重试")
+    end
 end
 
 function module:OnDisable()
+    if eventFrame then
+        eventFrame:UnregisterAllEvents()
+    end
     Restore()
 end
